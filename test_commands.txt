@@ -1,0 +1,81 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║             MyShell — Test Commands                         ║
+# ╠══════════════════════════════════════════════════════════════╣
+# ║ Run: python3 shell.py                                      ║
+# ║ Then paste/type these commands one by one to verify.        ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+# ─── Test 1: Basic Commands ───────────────────────────────────────────
+# Expected: Lists files in current directory
+ls
+
+# Expected: Lists files in long format with hidden files
+ls -la
+
+# Expected: Prints current working directory
+pwd
+
+# Expected: Prints "Hello from MyShell"
+echo "Hello from MyShell"
+
+# Expected: Prints today's date
+date
+
+# Expected: Prints current username
+whoami
+
+# ─── Test 2: Built-in Commands ────────────────────────────────────────
+# Expected: Shows help text with available commands and OS concepts
+help
+
+# Expected: Changes to /tmp, then pwd confirms it
+cd /tmp
+pwd
+
+# Expected: Changes back to home directory
+cd ~
+pwd
+
+# Expected: Error message "No such file or directory" (should NOT crash)
+cd /this/path/does/not/exist
+
+# ─── Test 3: Error Handling ───────────────────────────────────────────
+# Expected: "command not found: nonexistent_command" (should NOT crash)
+nonexistent_command
+
+# Expected: "command not found: asdf" (should NOT crash)
+asdf
+
+# Expected: Empty enter does nothing, just shows prompt again
+# (just press Enter with no input)
+
+# ─── Test 4: Pipe Commands (Command Chaining) ────────────────────────
+# Expected: Lists only .py files from current directory
+ls -la | grep ".py"
+
+# Expected: Counts the number of lines containing "root" in /etc/passwd
+cat /etc/passwd | grep root | wc -l
+
+# Expected: Shows the first 5 lines of a long listing
+ls -la /etc | head -5
+
+# Expected: Lists files sorted by size
+ls -la | sort -k5 -n
+
+# ─── Test 5: Background Processes ────────────────────────────────────
+# Expected: Prints "[bg] started process <PID>" and prompt returns immediately
+sleep 5 &
+
+# Expected: This should print IMMEDIATELY (not after 5 seconds)
+echo "Prompt returned while sleep runs in background"
+
+# ─── Test 6: Quoted Strings ──────────────────────────────────────────
+# Expected: Prints "hello world" (as one argument, not two)
+echo "hello world"
+
+# Expected: Prints "it's a test"
+echo "it's a test"
+
+# ─── Test 7: Clean Exit ──────────────────────────────────────────────
+# Expected: Prints goodbye message and exits
+exit
