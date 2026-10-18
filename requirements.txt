@@ -1,0 +1,35 @@
+# MyShell — Python Requirements
+#
+# This project uses ONLY Python standard library modules.
+# No external packages (pip install) are required.
+#
+# ──────────────────────────────────────────────────────────
+#  System Requirements
+# ──────────────────────────────────────────────────────────
+#
+#   - Python >= 3.8
+#   - A POSIX-compatible OS for running the shell:
+#       ✅ Linux   — Full native support
+#       ✅ macOS   — Full native support (macOS is Unix/BSD-based)
+#       ⚠️  Windows — Use WSL (Windows Subsystem for Linux) to run
+#                     Code editing works on any OS via any editor/IDE
+#
+# ──────────────────────────────────────────────────────────
+#  Standard Library Modules Used
+# ──────────────────────────────────────────────────────────
+#
+#   os       — Process management (fork, execvp, pipe, dup2, chdir, waitpid)
+#   sys      — System-level I/O and exit handling
+#   shlex    — Safe shell-like input tokenization
+#   signal   — SIGCHLD handling for zombie process prevention
+#
+# ──────────────────────────────────────────────────────────
+#  Quick Setup Verification
+# ──────────────────────────────────────────────────────────
+#
+#   Run this command to verify your environment:
+#     python3 -c "import os, sys, shlex, signal; print('All modules OK')"
+#
+#   Then start the shell:
+#     python3 shell.py
+#
