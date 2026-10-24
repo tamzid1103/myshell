@@ -1,16 +1,9 @@
 # 🐚 MyShell — A Custom Unix Shell
 
-A custom command-line interface built from scratch in **Python 3**, developed as an **Operating System Lab** course project. MyShell interfaces directly with the Linux kernel through low-level system calls to demonstrate core operating system concepts.
+A custom command-line interface built from scratch in **Python 3**. MyShell interfaces directly with the Linux kernel through low-level system calls to demonstrate core operating system concepts.
 
 ---
 
-## 📋 Project Description
-
-> **OS Lab Project 11:** *Develop a Shell or Command Line Interface — Develop a basic command-line interface using C or Python. Implement commands like listing files, navigating directories, and handling simple processes. Add support for command chaining (using pipes) and background process handling.*
-
-MyShell fulfills all project requirements while demonstrating clean, modular architecture and comprehensive error handling.
-
----
 
 ## 🚀 How to Run
 
@@ -160,5 +153,3 @@ python3 shell.py
 ```
 
 ---
-
-*Developed as part of the Operating System Lab course — Project 11.*
