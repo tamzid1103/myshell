@@ -9,7 +9,7 @@ It continuously:
     2. Reads user input
     3. Parses the input into tokens
     4. Dispatches to the correct handler:
-       - Built-in commands → builtins.py (runs in parent)
+       - Built-in commands → builtin_cmds.py (runs in parent)
        - Piped commands    → pipes.py (fork + pipe + dup2)
        - Single commands   → executor.py (fork + execvp)
     5. Loops back to step 1
@@ -139,7 +139,7 @@ def main():
 
         # 2. Check for piped commands (inter-process communication)
         if parsed["is_pipe"]:
-            execute_pipeline(parsed["pipe_commands"])
+            execute_pipeline(parsed["pipe_commands"], background=parsed["is_background"])
             continue
 
         # 3. Single external command (fork + execvp)

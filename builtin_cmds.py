@@ -1,5 +1,5 @@
 """
-builtins.py — MyShell Built-in Commands
+builtin_cmds.py — MyShell Built-in Commands
 ========================================
 
 Built-in commands are executed directly in the parent (shell) process,
@@ -37,6 +37,10 @@ def builtin_cd(args):
         target = os.environ.get("HOME", "/")
     else:
         target = args[0]
+
+    # Expand ~ and ~user to the full home directory path
+    # (Python's os.chdir does NOT auto-expand tilde like bash)
+    target = os.path.expanduser(target)
 
     try:
         os.chdir(target)

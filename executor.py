@@ -102,8 +102,10 @@ def execute_command(tokens, background=False):
             # Foreground: block until the child process terminates
             try:
                 os.waitpid(pid, 0)
-            except ChildProcessError:
+            except (ChildProcessError, OSError):
                 # Child was already reaped (e.g., by SIGCHLD handler)
+                # Some Linux kernels raise OSError (ECHILD) instead of
+                # ChildProcessError when SIGCHLD is set to SIG_IGN
                 pass
 
     else:

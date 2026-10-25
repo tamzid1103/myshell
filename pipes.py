@@ -39,7 +39,7 @@ import os
 import sys
 
 
-def execute_pipeline(commands):
+def execute_pipeline(commands, background=False):
     """
     Execute a pipeline of commands connected by pipes.
 
@@ -115,8 +115,21 @@ def execute_pipeline(commands):
             child_pids.append(pid)
 
         else:
-            # fork() failed
+            # fork() failed — clean up before returning
             print("myshell: error: fork failed during pipeline setup")
+            # Close all pipe file descriptors to prevent leaks
+            for read_fd, write_fd in pipe_fds:
+                try:
+                    os.close(read_fd)
+                    os.close(write_fd)
+                except OSError:
+                    pass
+            # Wait for any children already forked to prevent orphans
+            for orphan_pid in child_pids:
+                try:
+                    os.waitpid(orphan_pid, 0)
+                except (ChildProcessError, OSError):
+                    pass
             return
 
     # ── Parent: Close ALL pipe file descriptors ────────────────────────
@@ -127,9 +140,15 @@ def execute_pipeline(commands):
         os.close(write_fd)
 
     # ── Parent: Wait for ALL children to finish ────────────────────────
-    for pid in child_pids:
-        try:
-            os.waitpid(pid, 0)
-        except ChildProcessError:
-            # Child was already reaped (e.g., by SIGCHLD handler)
-            pass
+    if background:
+        # Background pipeline: don't wait, print info and return
+        print(f"[bg] started pipeline with {len(child_pids)} processes")
+    else:
+        for pid in child_pids:
+            try:
+                os.waitpid(pid, 0)
+            except (ChildProcessError, OSError):
+                # Child was already reaped (e.g., by SIGCHLD handler)
+                # Some Linux kernels raise OSError (ECHILD) instead of
+                # ChildProcessError when SIGCHLD is set to SIG_IGN
+                pass
