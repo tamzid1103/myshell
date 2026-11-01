@@ -119,6 +119,13 @@ def main():
             print()  # Move to a new line
             continue
 
+        except OSError as e:
+            # SEC-09: stdin can raise OSError if the terminal is detached
+            # (e.g., stdin is a broken pipe or the controlling tty is gone).
+            # Exit cleanly rather than crashing with an unhandled exception.
+            print(f"\nmyshell: terminal error: {e}")
+            sys.exit(1)
+
         # ── EVAL: Parse the input ──────────────────────────────────────
         parsed = parse_input(raw_input_str)
 

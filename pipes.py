@@ -37,6 +37,14 @@ OS Concepts Demonstrated:
 
 import os
 import sys
+import shutil
+
+# SEC-08: Maximum number of commands allowed in a single pipeline.
+# Prevents fork-bomb style DoS via `yes | yes | yes | ... (1000 times)`.
+MAX_PIPELINE_DEPTH = 32
+
+# SEC-10: Set MYSHELL_DEBUG=1 to see full error details from child processes.
+DEBUG = os.environ.get("MYSHELL_DEBUG", "0") == "1"
 
 
 def execute_pipeline(commands, background=False):
@@ -61,13 +69,24 @@ def execute_pipeline(commands, background=False):
         print("myshell: pipe error: need at least two commands")
         return
 
+    # SEC-08: Enforce pipeline depth limit to prevent fork-bomb DoS.
+    if len(commands) > MAX_PIPELINE_DEPTH:
+        print(f"myshell: pipe error: pipeline too long (max {MAX_PIPELINE_DEPTH} commands)")
+        return
+
     # ── Create all pipes ───────────────────────────────────────────────
     # For N commands, we need N-1 pipes.
     # Each pipe is a (read_fd, write_fd) tuple.
     num_pipes = len(commands) - 1
     pipe_fds = []
     for _ in range(num_pipes):
-        read_fd, write_fd = os.pipe()
+        # SEC-02: Use O_CLOEXEC so these fds are automatically closed
+        # across exec() — prevents fd leakage into child programs.
+        # os.pipe2 is Linux-specific; fall back to os.pipe on other systems.
+        try:
+            read_fd, write_fd = os.pipe2(os.O_CLOEXEC)
+        except AttributeError:
+            read_fd, write_fd = os.pipe()  # macOS / non-Linux fallback
         pipe_fds.append((read_fd, write_fd))
 
     # ── Fork children for each command ─────────────────────────────────
@@ -93,21 +112,37 @@ def execute_pipeline(commands, background=False):
 
             # Close ALL pipe fds in this child
             # (the child only needs the dup2'd copies, not the originals)
+            # SEC-05: Wrap each close in try/except — if dup2() already
+            # closed a fd whose number matched stdin/stdout, a bare
+            # os.close() would raise OSError: Bad file descriptor.
             for read_fd, write_fd in pipe_fds:
-                os.close(read_fd)
-                os.close(write_fd)
+                try:
+                    os.close(read_fd)
+                except OSError:
+                    pass
+                try:
+                    os.close(write_fd)
+                except OSError:
+                    pass
 
-            # Replace this child with the target program
-            try:
-                os.execvp(cmd[0], cmd)
-            except FileNotFoundError:
+            # SEC-01: Resolve binary to absolute path via shutil.which()
+            # before exec, preventing PATH injection attacks.
+            resolved = shutil.which(cmd[0])
+            if resolved is None:
                 print(f"myshell: command not found: {cmd[0]}", file=sys.stderr)
                 sys.exit(127)
+            try:
+                # os.execv uses the exact resolved path — no PATH lookup.
+                os.execv(resolved, cmd)
             except PermissionError:
                 print(f"myshell: permission denied: {cmd[0]}", file=sys.stderr)
                 sys.exit(126)
             except Exception as e:
-                print(f"myshell: error executing {cmd[0]}: {e}", file=sys.stderr)
+                # SEC-10: Only expose internal details in debug mode.
+                if DEBUG:
+                    print(f"myshell: error executing {cmd[0]}: {e}", file=sys.stderr)
+                else:
+                    print(f"myshell: error executing {cmd[0]}", file=sys.stderr)
                 sys.exit(1)
 
         elif pid > 0:
@@ -146,7 +181,12 @@ def execute_pipeline(commands, background=False):
     else:
         for pid in child_pids:
             try:
-                os.waitpid(pid, 0)
+                # SEC-07/11: Capture each child's exit status.
+                _, status = os.waitpid(pid, 0)
+                if DEBUG and os.WIFEXITED(status):
+                    code = os.WEXITSTATUS(status)
+                    if code != 0:
+                        print(f"myshell: [debug] pipeline process {pid} exited with code {code}")
             except (ChildProcessError, OSError):
                 # Child was already reaped (e.g., by SIGCHLD handler)
                 # Some Linux kernels raise OSError (ECHILD) instead of

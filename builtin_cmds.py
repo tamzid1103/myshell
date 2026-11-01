@@ -66,6 +66,10 @@ def builtin_exit(args):
     if len(args) > 0:
         try:
             exit_code = int(args[0])
+            # SEC-12: Unix exit codes are a single byte (0–255).
+            # Clamp the value to prevent undefined OS behavior from
+            # arbitrarily large integers (e.g., `exit 9999999999`).
+            exit_code = exit_code % 256
         except ValueError:
             print(f"myshell: exit: {args[0]}: numeric argument required")
             exit_code = 1

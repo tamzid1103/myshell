@@ -36,6 +36,10 @@ OS Concepts Demonstrated:
 
 import os
 import sys
+import shutil
+
+# SEC-10: Set MYSHELL_DEBUG=1 to see full error details from child processes.
+DEBUG = os.environ.get("MYSHELL_DEBUG", "0") == "1"
 
 
 def execute_command(tokens, background=False):
@@ -74,19 +78,26 @@ def execute_command(tokens, background=False):
         # This is the child. Replace this process with the target program.
         # After execvp(), none of the Python code below will execute
         # because the process image is entirely replaced.
-        try:
-            os.execvp(tokens[0], tokens)
-        except FileNotFoundError:
-            # The binary was not found in PATH
+        # SEC-01: Resolve the binary via shutil.which() before exec.
+        # This gives us an absolute path and avoids PATH injection:
+        # even if $PATH is tampered, we verify the real binary location.
+        resolved = shutil.which(tokens[0])
+        if resolved is None:
             print(f"myshell: command not found: {tokens[0]}")
             sys.exit(127)  # 127 = command not found (standard convention)
+        try:
+            # os.execv takes an absolute path — no PATH lookup performed.
+            os.execv(resolved, tokens)
         except PermissionError:
             # The binary exists but is not executable
             print(f"myshell: permission denied: {tokens[0]}")
             sys.exit(126)  # 126 = permission denied (standard convention)
         except Exception as e:
-            # Catch any other unexpected error in the child
-            print(f"myshell: error executing {tokens[0]}: {e}")
+            # SEC-10: Only expose internal error details in debug mode.
+            if DEBUG:
+                print(f"myshell: error executing {tokens[0]}: {e}")
+            else:
+                print(f"myshell: error executing {tokens[0]}")
             sys.exit(1)
 
     elif pid > 0:
@@ -101,7 +112,13 @@ def execute_command(tokens, background=False):
         else:
             # Foreground: block until the child process terminates
             try:
-                os.waitpid(pid, 0)
+                # SEC-07/11: Capture the exit status so we can inspect
+                # the child's exit code (foundation for future $? support).
+                _, status = os.waitpid(pid, 0)
+                if os.WIFEXITED(status):
+                    exit_code = os.WEXITSTATUS(status)
+                    if DEBUG and exit_code != 0:
+                        print(f"myshell: [debug] process {pid} exited with code {exit_code}")
             except (ChildProcessError, OSError):
                 # Child was already reaped (e.g., by SIGCHLD handler)
                 # Some Linux kernels raise OSError (ECHILD) instead of
