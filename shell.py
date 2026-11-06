@@ -49,6 +49,7 @@ from colors import format_prompt, cyan, bold, yellow, red
 from executor import execute_command
 from pipes import execute_pipeline
 from variables import expand_variables
+from globbing import expand_globs
 from redirects import parse_redirections
 
 
@@ -95,8 +96,13 @@ def dispatch_segment(segment, background=False, last_exit_code=0):
     if segment.get("is_pipe"):
         pipe_commands = []
         for cmd in segment["pipe_commands"]:
-            pipe_commands.append(expand_variables(cmd, last_exit_code=last_exit_code))
+            cmd_vars = expand_variables(cmd, last_exit_code=last_exit_code)
+            cmd_globs = expand_globs(cmd_vars)
+            pipe_commands.append(cmd_globs)
         return execute_pipeline(pipe_commands, background=background)
+
+    # 3. Expand wildcards / globs (*, ?) for non-piped commands
+    tokens = expand_globs(tokens)
 
     # 3. Check for built-in commands (executed in parent process)
     clean_tokens, redirs, err = parse_redirections(tokens)
