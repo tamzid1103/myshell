@@ -175,6 +175,20 @@ def dispatch_line(parsed, last_exit_code=0):
     return last_exit_code
 
 
+def reap_background_processes():
+    """
+    Reap any terminated background child processes without blocking.
+    Demonstrates asynchronous process cleanup via os.waitpid(-1, os.WNOHANG).
+    """
+    while True:
+        try:
+            pid, _ = os.waitpid(-1, os.WNOHANG)
+            if pid <= 0:
+                break
+        except (ChildProcessError, OSError):
+            break
+
+
 def run_script(filepath, echo=True):
     """
     Execute commands from a script file sequentially (batch processing).
@@ -190,6 +204,7 @@ def run_script(filepath, echo=True):
         with open(filepath, "r") as f:
             last_code = 0
             for line in f:
+                reap_background_processes()
                 line = line.strip()
                 if not line or line.startswith("#"):
                     continue
@@ -215,7 +230,10 @@ def main():
     Main entry point for MyShell. Supports interactive REPL and batch script modes.
     """
     # ── Signal Setup ───────────────────────────────────────────────────
-    signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+    # In v2.0 with exit code tracking and logical operators ($?, &&, ||),
+    # foreground processes need reliable os.waitpid() exit codes.
+    # Background processes are reaped non-blocking via reap_background_processes().
+    signal.signal(signal.SIGCHLD, signal.SIG_DFL)
 
     # ── Script Execution Mode: python3 shell.py <script_file> ──────────
     if len(sys.argv) > 1:
@@ -231,6 +249,7 @@ def main():
     # ── REPL Loop ──────────────────────────────────────────────────────
     last_exit_code = 0
     while True:
+        reap_background_processes()
         try:
             # ── READ: Get user input ───────────────────────────────────
             raw_input_str = input(get_prompt())
