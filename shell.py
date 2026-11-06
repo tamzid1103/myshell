@@ -45,43 +45,31 @@ import signal
 from parser import parse_input
 from builtin_cmds import is_builtin, run_builtin, setup_history
 from completion import setup_completion
+from colors import format_prompt, cyan, bold, yellow, red
 from executor import execute_command
 from pipes import execute_pipeline
 
 
 def display_banner():
     """Display the MyShell welcome banner on startup."""
-    banner = """
-╔══════════════════════════════════════════════════════════════╗
-║                                                              ║
-║               🐚  Welcome to MyShell  🐚                    ║
-║                                                              ║
-║        A Custom Unix Shell — OS Lab Project                  ║
-║        Type 'help' for available commands                    ║
-║                                                              ║
-╚══════════════════════════════════════════════════════════════╝
+    banner = f"""
+{cyan("╔══════════════════════════════════════════════════════════════╗")}
+{cyan("║")}                                                              {cyan("║")}
+{cyan("║")}               🐚  {bold("Welcome to MyShell")}  🐚                    {cyan("║")}
+{cyan("║")}                                                              {cyan("║")}
+{cyan("║")}        A Custom Unix Shell — OS Lab Project                  {cyan("║")}
+{cyan("║")}        Type 'help' for available commands                    {cyan("║")}
+{cyan("║")}                                                              {cyan("║")}
+{cyan("╚══════════════════════════════════════════════════════════════╝")}
 """
     print(banner)
 
 
 def get_prompt():
     """
-    Build the shell prompt string.
-
-    Displays the current working directory's basename for context,
-    similar to how bash shows the directory in the prompt.
-
-    Returns:
-        str: The formatted prompt string.
+    Build the shell prompt string with ANSI colors.
     """
-    try:
-        cwd = os.getcwd()
-        # Show just the directory name, not the full path
-        dir_name = os.path.basename(cwd) or cwd
-    except OSError:
-        dir_name = "?"
-
-    return f"myshell [{dir_name}]> "
+    return format_prompt()
 
 
 def main():

@@ -38,6 +38,7 @@ import os
 import sys
 import shutil
 from redirects import parse_redirections, apply_redirections
+from colors import yellow, red
 
 # SEC-10: Set MYSHELL_DEBUG=1 to see full error details from child processes.
 DEBUG = os.environ.get("MYSHELL_DEBUG", "0") == "1"
@@ -102,7 +103,7 @@ def execute_command(tokens, background=False):
     elif pid > 0:
         # ── PARENT PROCESS ─────────────────────────────────────────────
         if background:
-            print(f"[bg] started process {pid}")
+            print(yellow(f"[bg] started process {pid}"))
             return 0
         else:
             try:

@@ -39,6 +39,7 @@ import os
 import sys
 import shutil
 from redirects import parse_redirections, apply_redirections
+from colors import yellow
 
 # SEC-08: Maximum number of commands allowed in a single pipeline.
 # Prevents fork-bomb style DoS via `yes | yes | yes | ... (1000 times)`.
@@ -191,7 +192,7 @@ def execute_pipeline(commands, background=False):
     pipeline_exit_code = 0
     if background:
         # Background pipeline: don't wait, print info and return
-        print(f"[bg] started pipeline with {len(child_pids)} processes")
+        print(yellow(f"[bg] started pipeline with {len(child_pids)} processes"))
         return 0
     else:
         for idx, pid in enumerate(child_pids):
