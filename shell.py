@@ -44,6 +44,7 @@ import signal
 # ── MyShell Module Imports ────────────────────────────────────────────
 from parser import parse_input
 from builtin_cmds import is_builtin, run_builtin, setup_history
+from completion import setup_completion
 from executor import execute_command
 from pipes import execute_pipeline
 
@@ -100,8 +101,9 @@ def main():
     # This prevents zombie processes from background commands ('cmd &').
     signal.signal(signal.SIGCHLD, signal.SIG_IGN)
 
-    # ── Command History Setup ──────────────────────────────────────────
+    # ── Command History & Tab Completion Setup ─────────────────────────
     setup_history()
+    setup_completion()
 
     # ── Welcome Banner ────────────────────────────────────────────────
     display_banner()
