@@ -38,6 +38,7 @@ OS Concepts Demonstrated:
 import os
 import sys
 import shutil
+from redirects import parse_redirections, apply_redirections
 
 # SEC-08: Maximum number of commands allowed in a single pipeline.
 # Prevents fork-bomb style DoS via `yes | yes | yes | ... (1000 times)`.
@@ -97,6 +98,15 @@ def execute_pipeline(commands, background=False):
 
         if pid == 0:
             # ── CHILD PROCESS ──────────────────────────────────────────
+            # Parse any command-specific I/O redirections (e.g. `cat < file` or `grep > out`)
+            clean_cmd, redirs, err = parse_redirections(cmd)
+            if err:
+                print(f"myshell: {err}", file=sys.stderr)
+                sys.exit(2)
+
+            if not clean_cmd:
+                sys.exit(0)
+
             # Set up this child's stdin/stdout based on its position
             # in the pipeline.
 
@@ -125,24 +135,27 @@ def execute_pipeline(commands, background=False):
                 except OSError:
                     pass
 
+            # Apply any explicit file redirections for this command
+            apply_redirections(redirs)
+
             # SEC-01: Resolve binary to absolute path via shutil.which()
             # before exec, preventing PATH injection attacks.
-            resolved = shutil.which(cmd[0])
+            resolved = shutil.which(clean_cmd[0])
             if resolved is None:
-                print(f"myshell: command not found: {cmd[0]}", file=sys.stderr)
+                print(f"myshell: command not found: {clean_cmd[0]}", file=sys.stderr)
                 sys.exit(127)
             try:
                 # os.execv uses the exact resolved path — no PATH lookup.
-                os.execv(resolved, cmd)
+                os.execv(resolved, clean_cmd)
             except PermissionError:
-                print(f"myshell: permission denied: {cmd[0]}", file=sys.stderr)
+                print(f"myshell: permission denied: {clean_cmd[0]}", file=sys.stderr)
                 sys.exit(126)
             except Exception as e:
                 # SEC-10: Only expose internal details in debug mode.
                 if DEBUG:
-                    print(f"myshell: error executing {cmd[0]}: {e}", file=sys.stderr)
+                    print(f"myshell: error executing {clean_cmd[0]}: {e}", file=sys.stderr)
                 else:
-                    print(f"myshell: error executing {cmd[0]}", file=sys.stderr)
+                    print(f"myshell: error executing {clean_cmd[0]}", file=sys.stderr)
                 sys.exit(1)
 
         elif pid > 0:
@@ -175,20 +188,27 @@ def execute_pipeline(commands, background=False):
         os.close(write_fd)
 
     # ── Parent: Wait for ALL children to finish ────────────────────────
+    pipeline_exit_code = 0
     if background:
         # Background pipeline: don't wait, print info and return
         print(f"[bg] started pipeline with {len(child_pids)} processes")
+        return 0
     else:
-        for pid in child_pids:
+        for idx, pid in enumerate(child_pids):
             try:
                 # SEC-07/11: Capture each child's exit status.
                 _, status = os.waitpid(pid, 0)
-                if DEBUG and os.WIFEXITED(status):
+                if os.WIFEXITED(status):
                     code = os.WEXITSTATUS(status)
-                    if code != 0:
+                    if DEBUG and code != 0:
                         print(f"myshell: [debug] pipeline process {pid} exited with code {code}")
+                    # By Unix convention, pipeline exit code is the exit code of the last process
+                    if idx == len(child_pids) - 1:
+                        pipeline_exit_code = code
+                elif os.WIFSIGNALED(status):
+                    if idx == len(child_pids) - 1:
+                        pipeline_exit_code = 128 + os.WTERMSIG(status)
             except (ChildProcessError, OSError):
                 # Child was already reaped (e.g., by SIGCHLD handler)
-                # Some Linux kernels raise OSError (ECHILD) instead of
-                # ChildProcessError when SIGCHLD is set to SIG_IGN
                 pass
+        return pipeline_exit_code
