@@ -1,5 +1,5 @@
 # ╔══════════════════════════════════════════════════════════════╗
-# ║             MyShell — Test Commands                         ║
+# ║             MyShell v2.0 — Test Commands                     ║
 # ╠══════════════════════════════════════════════════════════════╣
 # ║ Run: python3 shell.py                                      ║
 # ║ Then paste/type these commands one by one to verify.        ║
@@ -36,46 +36,98 @@ pwd
 cd ~
 pwd
 
+# Expected: Changes back to project directory
+cd - || cd /tmp
+
 # Expected: Error message "No such file or directory" (should NOT crash)
 cd /this/path/does/not/exist
 
-# ─── Test 3: Error Handling ───────────────────────────────────────────
-# Expected: "command not found: nonexistent_command" (should NOT crash)
-nonexistent_command
+# ─── Test 3: Environment Variables & Expansion ────────────────────────
+# Expected: Set an environment variable
+export COURSE="Operating Systems CSE311"
+export SEMESTER="Fall 2026"
 
-# Expected: "command not found: asdf" (should NOT crash)
-asdf
+# Expected: Prints "Operating Systems CSE311 - Fall 2026"
+echo "Enrolled in: $COURSE - $SEMESTER"
 
-# Expected: Empty enter does nothing, just shows prompt again
-# (just press Enter with no input)
+# Expected: Prints current user and home directory
+echo "User: $USER Home: $HOME PID: $$"
 
-# ─── Test 4: Pipe Commands (Command Chaining) ────────────────────────
+# Expected: Displays all environment variables
+env
+
+# Expected: Unsets the variable
+unset COURSE
+echo "After unset: '$COURSE'"
+
+# ─── Test 4: I/O Redirection (>, >>, <) ──────────────────────────────
+# Expected: Redirects stdout to file (overwrite)
+echo "Line 1: MyShell v2 I/O Redirection" > /tmp/myshell_test.txt
+cat /tmp/myshell_test.txt
+
+# Expected: Redirects stdout to file (append)
+echo "Line 2: Appended output" >> /tmp/myshell_test.txt
+cat /tmp/myshell_test.txt
+
+# Expected: Redirects stdin from file
+cat < /tmp/myshell_test.txt
+
+# ─── Test 5: Pipe Commands (IPC) & Combined Redirection ──────────────
 # Expected: Lists only .py files from current directory
 ls -la | grep ".py"
 
 # Expected: Counts the number of lines containing "root" in /etc/passwd
 cat /etc/passwd | grep root | wc -l
 
-# Expected: Shows the first 5 lines of a long listing
-ls -la /etc | head -5
+# Expected: Pipeline with input and output redirection
+cat < /tmp/myshell_test.txt | grep Line > /tmp/myshell_out.txt
+cat /tmp/myshell_out.txt
 
-# Expected: Lists files sorted by size
-ls -la | sort -k5 -n
+# ─── Test 6: Logical Operators (&&, ||) & Exit Codes ─────────────────
+# Expected: AND operator runs 2nd command only if 1st succeeds
+true && echo "Condition 1 succeeded"
 
-# ─── Test 5: Background Processes ────────────────────────────────────
+# Expected: 2nd command skipped because 1st fails
+false && echo "This should NOT print"
+
+# Expected: OR operator runs 2nd command only if 1st fails
+false || echo "Condition 2 recovered via OR"
+
+# Expected: 2nd command skipped because 1st succeeds
+true || echo "This should NOT print"
+
+# Expected: Exit code inspection via $?
+ls /nonexistent_directory_12345
+echo "Previous command exit code: $?"
+
+# ─── Test 7: Wildcard / Glob Expansion (*, ?) ────────────────────────
+# Expected: Expands *.py to list of python files
+ls *.py
+
+# Expected: Expands single character wildcard
+ls test_command?.txt
+
+# ─── Test 8: Command History & Tab Completion ────────────────────────
+# Expected: Displays numbered history of executed commands
+history
+
+# Expected: Press Tab while typing 'shel' to autocomplete 'shell.py'
+# Expected: Press Up Arrow (↑) to recall previous command
+
+# ─── Test 9: Background Processes (&) ────────────────────────────────
 # Expected: Prints "[bg] started process <PID>" and prompt returns immediately
 sleep 5 &
 
 # Expected: This should print IMMEDIATELY (not after 5 seconds)
 echo "Prompt returned while sleep runs in background"
 
-# ─── Test 6: Quoted Strings ──────────────────────────────────────────
-# Expected: Prints "hello world" (as one argument, not two)
-echo "hello world"
+# ─── Test 10: Shell Script Execution ─────────────────────────────────
+# Expected: Create a test script and execute it via source
+echo "echo 'Hello from sourced script!'" > /tmp/sample_script.sh
+echo "export SCRIPT_RUN=1" >> /tmp/sample_script.sh
+source /tmp/sample_script.sh
+echo "Script var: $SCRIPT_RUN"
 
-# Expected: Prints "it's a test"
-echo "it's a test"
-
-# ─── Test 7: Clean Exit ──────────────────────────────────────────────
+# ─── Test 11: Clean Exit ─────────────────────────────────────────────
 # Expected: Prints goodbye message and exits
 exit
