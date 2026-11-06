@@ -149,6 +149,55 @@ def builtin_env(args):
     return 0
 
 
+try:
+    import readline
+except ImportError:
+    readline = None
+
+HISTORY_FILE = os.path.expanduser("~/.myshell_history")
+
+
+def setup_history():
+    """Load persistent command history from disk."""
+    if readline is None:
+        return
+    try:
+        readline.read_history_file(HISTORY_FILE)
+    except (FileNotFoundError, OSError):
+        pass
+
+    import atexit
+    def _save():
+        try:
+            readline.write_history_file(HISTORY_FILE)
+        except (PermissionError, OSError):
+            pass
+    atexit.register(_save)
+
+
+def builtin_history(args):
+    """
+    Print command history or clear it.
+
+    Usage:
+        history
+        history -c (clear history)
+    """
+    if readline is None:
+        print("myshell: history: readline not available", file=sys.stderr)
+        return 1
+
+    if args and args[0] == "-c":
+        readline.clear_history()
+        return 0
+
+    length = readline.get_current_history_length()
+    for i in range(1, length + 1):
+        item = readline.get_history_item(i)
+        print(f"  {i:4d}  {item}")
+    return 0
+
+
 def builtin_help(args):
     """
     Display help information about MyShell and its built-in commands.
@@ -195,12 +244,13 @@ def builtin_help(args):
 # Maps command name (string) → handler function.
 # To add a new builtin, simply add an entry here.
 BUILTINS = {
-    "cd":     builtin_cd,
-    "exit":   builtin_exit,
-    "help":   builtin_help,
-    "export": builtin_export,
-    "unset":  builtin_unset,
-    "env":    builtin_env,
+    "cd":      builtin_cd,
+    "exit":    builtin_exit,
+    "help":    builtin_help,
+    "export":  builtin_export,
+    "unset":   builtin_unset,
+    "env":     builtin_env,
+    "history": builtin_history,
 }
 
 

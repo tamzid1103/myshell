@@ -43,7 +43,7 @@ import signal
 
 # ── MyShell Module Imports ────────────────────────────────────────────
 from parser import parse_input
-from builtin_cmds import is_builtin, run_builtin
+from builtin_cmds import is_builtin, run_builtin, setup_history
 from executor import execute_command
 from pipes import execute_pipeline
 
@@ -99,6 +99,9 @@ def main():
     # SIG_IGN tells the kernel: "I don't care, just clean it up."
     # This prevents zombie processes from background commands ('cmd &').
     signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+
+    # ── Command History Setup ──────────────────────────────────────────
+    setup_history()
 
     # ── Welcome Banner ────────────────────────────────────────────────
     display_banner()
