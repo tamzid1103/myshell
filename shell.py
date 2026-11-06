@@ -48,6 +48,8 @@ from completion import setup_completion
 from colors import format_prompt, cyan, bold, yellow, red
 from executor import execute_command
 from pipes import execute_pipeline
+from variables import expand_variables
+from redirects import parse_redirections
 
 
 def display_banner():
@@ -70,6 +72,101 @@ def get_prompt():
     Build the shell prompt string with ANSI colors.
     """
     return format_prompt()
+
+
+def dispatch_segment(segment, background=False, last_exit_code=0):
+    """
+    Dispatch a single command segment (single command or pipeline).
+
+    Args:
+        segment (dict): Command segment with 'tokens', 'is_pipe', 'pipe_commands'.
+        background (bool): Whether to run asynchronously.
+        last_exit_code (int): Previous exit code for variable expansion ($?).
+
+    Returns:
+        int: Exit status code.
+    """
+    tokens = segment["tokens"]
+
+    # 1. Expand environment variables ($VAR, $?, $$)
+    tokens = expand_variables(tokens, last_exit_code=last_exit_code)
+
+    # 2. Check for piped commands (inter-process communication)
+    if segment.get("is_pipe"):
+        pipe_commands = []
+        for cmd in segment["pipe_commands"]:
+            pipe_commands.append(expand_variables(cmd, last_exit_code=last_exit_code))
+        return execute_pipeline(pipe_commands, background=background)
+
+    # 3. Check for built-in commands (executed in parent process)
+    clean_tokens, redirs, err = parse_redirections(tokens)
+    if err:
+        print(f"myshell: {err}", file=sys.stderr)
+        return 2
+
+    if not clean_tokens:
+        # Bare redirection without command (e.g. `> file`)
+        return execute_command(tokens, background=background)
+
+    cmd_name = clean_tokens[0]
+    cmd_args = clean_tokens[1:]
+
+    if is_builtin(cmd_name):
+        saved_stdout = None
+        saved_stdin = None
+        try:
+            if redirs.get("stdout_file"):
+                flags = os.O_WRONLY | os.O_CREAT | (os.O_APPEND if redirs.get("append") else os.O_TRUNC)
+                fd_out = os.open(redirs["stdout_file"], flags, 0o644)
+                saved_stdout = os.dup(sys.stdout.fileno())
+                os.dup2(fd_out, sys.stdout.fileno())
+                os.close(fd_out)
+            if redirs.get("stdin_file"):
+                fd_in = os.open(redirs["stdin_file"], os.O_RDONLY)
+                saved_stdin = os.dup(sys.stdin.fileno())
+                os.dup2(fd_in, sys.stdin.fileno())
+                os.close(fd_in)
+            return run_builtin(cmd_name, cmd_args)
+        except OSError as e:
+            print(f"myshell: {e}", file=sys.stderr)
+            return 1
+        finally:
+            if saved_stdout is not None:
+                os.dup2(saved_stdout, sys.stdout.fileno())
+                os.close(saved_stdout)
+            if saved_stdin is not None:
+                os.dup2(saved_stdin, sys.stdin.fileno())
+                os.close(saved_stdin)
+
+    # 4. Single external command (fork + execvp + waitpid)
+    return execute_command(tokens, background=background)
+
+
+def dispatch_line(parsed, last_exit_code=0):
+    """
+    Execute a parsed command line respecting logical operators (&&, ||).
+
+    Args:
+        parsed (dict): The output of parse_input().
+        last_exit_code (int): Current exit status before line execution.
+
+    Returns:
+        int: Final exit status.
+    """
+    for segment in parsed["chain"]:
+        op = segment["op"]
+        if op == "&&" and last_exit_code != 0:
+            continue
+        if op == "||" and last_exit_code == 0:
+            continue
+
+        last_exit_code = dispatch_segment(
+            segment,
+            background=parsed["is_background"],
+            last_exit_code=last_exit_code,
+        )
+
+    return last_exit_code
 
 
 def main():
@@ -97,6 +194,7 @@ def main():
     display_banner()
 
     # ── REPL Loop ──────────────────────────────────────────────────────
+    last_exit_code = 0
     while True:
         try:
             # ── READ: Get user input ───────────────────────────────────
@@ -126,24 +224,8 @@ def main():
             # Empty input or syntax error — skip to next iteration
             continue
 
-        # Extract the command name (first token)
-        command_name = parsed["tokens"][0]
-        command_args = parsed["tokens"][1:]
-
-        # ── DISPATCH: Route to the correct handler ─────────────────────
-
-        # 1. Check for built-in commands (must run in parent process)
-        if is_builtin(command_name):
-            run_builtin(command_name, command_args)
-            continue
-
-        # 2. Check for piped commands (inter-process communication)
-        if parsed["is_pipe"]:
-            execute_pipeline(parsed["pipe_commands"], background=parsed["is_background"])
-            continue
-
-        # 3. Single external command (fork + execvp)
-        execute_command(parsed["tokens"], background=parsed["is_background"])
+        # ── DISPATCH: Route commands through conditional execution chain
+        last_exit_code = dispatch_line(parsed, last_exit_code=last_exit_code)
 
 
 # ── Entry Point ───────────────────────────────────────────────────────

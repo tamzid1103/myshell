@@ -7,19 +7,23 @@ tokenized data that the shell can act upon.
 
 Uses `shlex.split()` instead of `str.split()` because shlex correctly
 handles:
-    - Quoted strings:  echo "hello world"  → ['echo', 'hello world']
+    - Quoted strings:     echo "hello world"  → ['echo', 'hello world']
     - Escape characters:  echo hello\\ world  → ['echo', 'hello world']
-    - Nested quotes:  echo "it's here"  → ['echo', "it's here"]
+    - Nested quotes:      echo "it's here"    → ['echo', "it's here"]
 
-The parser also detects special operators:
-    - `&` (background execution)
-    - `|` (pipe / command chaining)
+The parser detects special operators:
+    - `&`       (background execution)
+    - `|`       (pipe / command chaining)
+    - `&&`, `||` (logical conditional execution)
+    - `>`, `>>`, `<` (I/O redirection handled downstream)
 
 OS Concepts Demonstrated:
     - Shell input parsing and tokenization
-    - Operator detection for IPC (pipes) and async execution (background)
+    - Lexical analysis of shell grammar and operator precedence
+    - Process conditional execution flow
 """
 
+import sys
 import shlex
 
 
@@ -31,17 +35,17 @@ def parse_input(raw_input):
         raw_input (str): The raw string from the user's input.
 
     Returns:
-        dict or None: Returns None if input is empty/whitespace.
+        dict or None: Returns None if input is empty/whitespace or syntax error.
             Otherwise returns a dict with:
             {
-                "tokens":        list[str],       # Tokenized command
-                "is_background": bool,            # True if '&' was found
-                "is_pipe":       bool,            # True if '|' was found
-                "pipe_commands": list[list[str]]  # Sub-commands split at '|'
+                "is_background": bool,
+                "chain": list[dict],      # List of conditional command segments
+                "tokens": list[str],      # First segment tokens (backwards compat)
+                "is_pipe": bool,          # First segment pipe status
+                "pipe_commands": list     # First segment sub-commands
             }
     """
     # ── Guard: Empty Input ─────────────────────────────────────────────
-    # Prevents IndexError when user just presses Enter
     if not raw_input or not raw_input.strip():
         return None
 
@@ -49,43 +53,78 @@ def parse_input(raw_input):
     try:
         tokens = shlex.split(raw_input)
     except ValueError as e:
-        # Catches unmatched quotes, e.g.: echo "hello
-        print(f"myshell: syntax error: {e}")
+        print(f"myshell: syntax error: {e}", file=sys.stderr)
         return None
 
-    # Empty after tokenization (shouldn't happen, but guard anyway)
     if not tokens:
         return None
 
     # ── Detect Background Operator '&' ─────────────────────────────────
-    # If the last token is '&', the command should run in the background.
-    # Remove '&' from the token list so it's not passed to execvp.
     is_background = False
     if tokens[-1] == "&":
         is_background = True
         tokens = tokens[:-1]
         if not tokens:
-            print("myshell: syntax error: expected command before '&'")
+            print("myshell: syntax error: expected command before '&'", file=sys.stderr)
             return None
 
-    # ── Detect Pipe Operator '|' ───────────────────────────────────────
-    # Split the token list at each '|' to get individual commands.
-    # Example: ['ls', '-l', '|', 'grep', 'txt']
-    #        → [['ls', '-l'], ['grep', 'txt']]
-    is_pipe = "|" in tokens
-    pipe_commands = []
+    # ── Split at Logical Operators ('&&' and '||') ────────────────────
+    chain = _split_at_conditionals(tokens)
+    if chain is None or not chain:
+        return None
 
-    if is_pipe:
-        pipe_commands = _split_at_pipes(tokens)
-        if pipe_commands is None:
-            return None  # Syntax error was already printed
+    # For each segment in the chain, check for pipe operators ('|')
+    for segment in chain:
+        seg_tokens = segment["tokens"]
+        is_pipe = "|" in seg_tokens
+        pipe_commands = []
+        if is_pipe:
+            pipe_commands = _split_at_pipes(seg_tokens)
+            if pipe_commands is None:
+                return None
+        segment["is_pipe"] = is_pipe
+        segment["pipe_commands"] = pipe_commands
 
     return {
-        "tokens":        tokens,
         "is_background": is_background,
-        "is_pipe":       is_pipe,
-        "pipe_commands": pipe_commands,
+        "chain":         chain,
+        "tokens":        chain[0]["tokens"],
+        "is_pipe":       chain[0]["is_pipe"],
+        "pipe_commands": chain[0]["pipe_commands"],
     }
+
+
+def _split_at_conditionals(tokens):
+    """
+    Split token list at '&&' and '||' boundaries.
+
+    Returns:
+        list[dict] or None: List of dicts with {'op': None|'&&'|'||', 'tokens': list[str]}
+                            or None if a syntax error occurred.
+    """
+    chain = []
+    current_tokens = []
+    current_op = None
+
+    for token in tokens:
+        if token in ("&&", "||"):
+            if not current_tokens:
+                print(f"myshell: syntax error near unexpected token '{token}'", file=sys.stderr)
+                return None
+            chain.append({"op": current_op, "tokens": current_tokens})
+            current_op = token
+            current_tokens = []
+        else:
+            current_tokens.append(token)
+
+    if not current_tokens:
+        if current_op:
+            print(f"myshell: syntax error near unexpected token '{current_op}'", file=sys.stderr)
+            return None
+        return []
+
+    chain.append({"op": current_op, "tokens": current_tokens})
+    return chain
 
 
 def _split_at_pipes(tokens):
@@ -97,10 +136,6 @@ def _split_at_pipes(tokens):
 
     Returns:
         list[list[str]] or None: List of command token lists, or None on error.
-
-    Example:
-        ['ls', '-l', '|', 'grep', 'py', '|', 'wc', '-l']
-        → [['ls', '-l'], ['grep', 'py'], ['wc', '-l']]
     """
     commands = []
     current_command = []
@@ -108,16 +143,15 @@ def _split_at_pipes(tokens):
     for token in tokens:
         if token == "|":
             if not current_command:
-                print("myshell: syntax error: expected command before '|'")
+                print("myshell: syntax error: expected command before '|'", file=sys.stderr)
                 return None
             commands.append(current_command)
             current_command = []
         else:
             current_command.append(token)
 
-    # Don't forget the last command (after the final '|')
     if not current_command:
-        print("myshell: syntax error: expected command after '|'")
+        print("myshell: syntax error: expected command after '|'", file=sys.stderr)
         return None
 
     commands.append(current_command)
