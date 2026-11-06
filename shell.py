@@ -175,28 +175,57 @@ def dispatch_line(parsed, last_exit_code=0):
     return last_exit_code
 
 
+def run_script(filepath, echo=True):
+    """
+    Execute commands from a script file sequentially (batch processing).
+
+    Args:
+        filepath (str): Path to the script file.
+        echo (bool): If True, echo commands before executing (myshell> ...).
+
+    Returns:
+        int: Exit status of the last executed command.
+    """
+    try:
+        with open(filepath, "r") as f:
+            last_code = 0
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if echo:
+                    print(f"myshell> {line}")
+                parsed = parse_input(line)
+                if parsed:
+                    last_code = dispatch_line(parsed, last_exit_code=last_code)
+            return last_code
+    except FileNotFoundError:
+        print(f"myshell: script not found: {filepath}", file=sys.stderr)
+        return 1
+    except PermissionError:
+        print(f"myshell: permission denied: {filepath}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"myshell: error reading {filepath}: {e}", file=sys.stderr)
+        return 1
+
+
 def main():
     """
-    The main REPL loop for MyShell.
-
-    This function:
-    1. Sets up signal handling to prevent zombie processes
-    2. Displays the welcome banner
-    3. Enters an infinite loop that reads, parses, and dispatches commands
-    4. Handles Ctrl+C (SIGINT) and Ctrl+D (EOF) gracefully
+    Main entry point for MyShell. Supports interactive REPL and batch script modes.
     """
-
     # ── Signal Setup ───────────────────────────────────────────────────
-    # SIGCHLD is sent to the parent when a child process terminates.
-    # SIG_IGN tells the kernel: "I don't care, just clean it up."
-    # This prevents zombie processes from background commands ('cmd &').
     signal.signal(signal.SIGCHLD, signal.SIG_IGN)
 
-    # ── Command History & Tab Completion Setup ─────────────────────────
+    # ── Script Execution Mode: python3 shell.py <script_file> ──────────
+    if len(sys.argv) > 1:
+        script_file = sys.argv[1]
+        exit_code = run_script(script_file, echo=True)
+        sys.exit(exit_code)
+
+    # ── Interactive REPL Mode Setup ────────────────────────────────────
     setup_history()
     setup_completion()
-
-    # ── Welcome Banner ────────────────────────────────────────────────
     display_banner()
 
     # ── REPL Loop ──────────────────────────────────────────────────────

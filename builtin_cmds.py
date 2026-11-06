@@ -198,6 +198,23 @@ def builtin_history(args):
     return 0
 
 
+def builtin_source(args):
+    """
+    Execute commands from a script file within the current shell environment.
+
+    Usage:
+        source script.sh
+        . script.sh
+    """
+    if not args:
+        print("myshell: source: filename argument required", file=sys.stderr)
+        return 1
+
+    filepath = os.path.expanduser(args[0])
+    from shell import run_script
+    return run_script(filepath, echo=True)
+
+
 def builtin_help(args):
     """
     Display help information about MyShell and its built-in commands.
@@ -251,6 +268,8 @@ BUILTINS = {
     "unset":   builtin_unset,
     "env":     builtin_env,
     "history": builtin_history,
+    "source":  builtin_source,
+    ".":       builtin_source,
 }
 
 
