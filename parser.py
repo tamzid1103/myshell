@@ -45,8 +45,13 @@ def parse_input(raw_input):
                 "pipe_commands": list     # First segment sub-commands
             }
     """
-    # ── Guard: Empty Input ─────────────────────────────────────────────
+    # ── Guard: Empty Input & Null Bytes ────────────────────────────────
+    # Prevents IndexError when user just presses Enter or crashes from null bytes
     if not raw_input or not raw_input.strip():
+        return None
+
+    if "\0" in raw_input:
+        print("myshell: syntax error: embedded null byte in input", file=sys.stderr)
         return None
 
     # ── Tokenize ───────────────────────────────────────────────────────
@@ -67,6 +72,11 @@ def parse_input(raw_input):
         if not tokens:
             print("myshell: syntax error: expected command before '&'", file=sys.stderr)
             return None
+
+    # Check for unexpected '&' remaining in command tokens
+    if "&" in tokens:
+        print("myshell: syntax error near unexpected token '&'", file=sys.stderr)
+        return None
 
     # ── Split at Logical Operators ('&&' and '||') ────────────────────
     chain = _split_at_conditionals(tokens)
