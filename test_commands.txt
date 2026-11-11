@@ -1,5 +1,5 @@
 # ╔══════════════════════════════════════════════════════════════╗
-# ║             MyShell v2.0 — Test Commands                     ║
+# ║             MyShell — Test Commands                         ║
 # ╠══════════════════════════════════════════════════════════════╣
 # ║ Run: python3 shell.py                                      ║
 # ║ Then paste/type these commands one by one to verify.        ║
@@ -24,7 +24,7 @@ date
 # Expected: Prints current username
 whoami
 
-# ─── Test 2: Built-in Commands ────────────────────────────────────────
+# ─── Test 2: Built-in Directory Commands ──────────────────────────────
 # Expected: Shows help text with available commands and OS concepts
 help
 
@@ -36,13 +36,31 @@ pwd
 cd ~
 pwd
 
-# Expected: Changes back to project directory
-cd - || cd /tmp
-
 # Expected: Error message "No such file or directory" (should NOT crash)
 cd /this/path/does/not/exist
 
-# ─── Test 3: Environment Variables & Expansion ────────────────────────
+# ─── Test 3: Terminal Text & Prompt Color Customization ───────────────
+# Expected: Shows current color status and quick help
+color
+
+# Expected: Shows full color palette with colored visual samples
+color list
+
+# Expected: Changes shell text color to green (user typing & outputs appear green)
+color green
+echo "This output is in green!"
+
+# Expected: Changes shell text color to cyan (also accepts 'colour')
+colour cyan
+echo "This output is now in cyan!"
+
+# Expected: Sets prompt accent color specifically
+color prompt yellow
+
+# Expected: Resets both text and prompt colors back to terminal default
+color reset
+
+# ─── Test 4: Environment Variables & Expansion ────────────────────────
 # Expected: Set an environment variable
 export COURSE="Operating Systems CSE311"
 export SEMESTER="Fall 2026"
@@ -60,7 +78,7 @@ env
 unset COURSE
 echo "After unset: '$COURSE'"
 
-# ─── Test 4: I/O Redirection (>, >>, <) ──────────────────────────────
+# ─── Test 5: I/O Redirection (>, >>, <) ──────────────────────────────
 # Expected: Redirects stdout to file (overwrite)
 echo "Line 1: MyShell v2 I/O Redirection" > /tmp/myshell_test.txt
 cat /tmp/myshell_test.txt
@@ -72,9 +90,12 @@ cat /tmp/myshell_test.txt
 # Expected: Redirects stdin from file
 cat < /tmp/myshell_test.txt
 
-# ─── Test 5: Pipe Commands (IPC) & Combined Redirection ──────────────
+# ─── Test 6: Pipe Commands (IPC) & Built-in Pipes ─────────────────────
 # Expected: Lists only .py files from current directory
 ls -la | grep ".py"
+
+# Expected: Piped built-in command filters help text for 'cd'
+help | grep cd
 
 # Expected: Counts the number of lines containing "root" in /etc/passwd
 cat /etc/passwd | grep root | wc -l
@@ -83,7 +104,7 @@ cat /etc/passwd | grep root | wc -l
 cat < /tmp/myshell_test.txt | grep Line > /tmp/myshell_out.txt
 cat /tmp/myshell_out.txt
 
-# ─── Test 6: Logical Operators (&&, ||) & Exit Codes ─────────────────
+# ─── Test 7: Logical Operators (&&, ||) & Exit Codes ─────────────────
 # Expected: AND operator runs 2nd command only if 1st succeeds
 true && echo "Condition 1 succeeded"
 
@@ -100,34 +121,48 @@ true || echo "This should NOT print"
 ls /nonexistent_directory_12345
 echo "Previous command exit code: $?"
 
-# ─── Test 7: Wildcard / Glob Expansion (*, ?) ────────────────────────
+# ─── Test 8: Wildcard / Glob Expansion (*, ?) ────────────────────────
 # Expected: Expands *.py to list of python files
 ls *.py
 
 # Expected: Expands single character wildcard
 ls test_command?.txt
 
-# ─── Test 8: Command History & Tab Completion ────────────────────────
+# ─── Test 9: Command History & Tab Completion ────────────────────────
 # Expected: Displays numbered history of executed commands
 history
 
 # Expected: Press Tab while typing 'shel' to autocomplete 'shell.py'
 # Expected: Press Up Arrow (↑) to recall previous command
 
-# ─── Test 9: Background Processes (&) ────────────────────────────────
+# ─── Test 10: Background Processes (&) ────────────────────────────────
 # Expected: Prints "[bg] started process <PID>" and prompt returns immediately
 sleep 5 &
 
 # Expected: This should print IMMEDIATELY (not after 5 seconds)
 echo "Prompt returned while sleep runs in background"
 
-# ─── Test 10: Shell Script Execution ─────────────────────────────────
+# ─── Test 11: Shell Script Execution ─────────────────────────────────
 # Expected: Create a test script and execute it via source
 echo "echo 'Hello from sourced script!'" > /tmp/sample_script.sh
 echo "export SCRIPT_RUN=1" >> /tmp/sample_script.sh
 source /tmp/sample_script.sh
 echo "Script var: $SCRIPT_RUN"
 
-# ─── Test 11: Clean Exit ─────────────────────────────────────────────
-# Expected: Prints goodbye message and exits
+# ─── Test 12: Quoted Strings & Syntax Guarding ─────────────────────────
+# Expected: Prints "hello world" (as one argument, not two)
+echo "hello world"
+
+# Expected: Prints "it's a test"
+echo "it's a test"
+
+# ─── Test 13: Error Handling & Path Resolution ─────────────────────────
+# Expected: "command not found: nonexistent_command" (should NOT crash)
+nonexistent_command
+
+# Expected: "myshell: /tmp: Is a directory"
+/tmp
+
+# ─── Test 14: Clean Exit ───────────────────────────────────────────────
+# Expected: Prints goodbye message, resets terminal colors, and exits cleanly
 exit
