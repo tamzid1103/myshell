@@ -80,24 +80,27 @@ def execute_command(tokens, background=False):
 
     if pid == 0:
         # ── CHILD PROCESS ──────────────────────────────────────────────
-        # Apply file descriptor redirections (<, >, >>) before exec
-        apply_redirections(redirs)
-
-        # SEC-01: Resolve binary via shutil.which() before exec to prevent PATH injection
-        resolved = shutil.which(clean_tokens[0])
+        # This is the child. Replace this process with the target program.
+        # After execvp(), none of the Python code below will execute
+        # because the process image is entirely replaced.
+        # SEC-01: Resolve the binary via shutil.which() before exec.
+        # This gives us an absolute path and avoids PATH injection:
+        # even if $PATH is tampered, we verify the real binary location.
+        resolved = shutil.which(tokens[0])
         if resolved is None:
-            print(f"myshell: command not found: {clean_tokens[0]}", file=sys.stderr)
-            sys.exit(127)  # 127 = command not found
+            print(f"myshell: command not found: {tokens[0]}")
+            sys.exit(127)  # 127 = command not found (standard convention)
         try:
             os.execv(resolved, clean_tokens)
         except PermissionError:
-            print(f"myshell: permission denied: {clean_tokens[0]}", file=sys.stderr)
-            sys.exit(126)  # 126 = permission denied
+            # The binary exists but is not executable
+            print(f"myshell: permission denied: {tokens[0]}")
+            sys.exit(126)  # 126 = permission denied (standard convention)
         except Exception as e:
             if DEBUG:
-                print(f"myshell: error executing {clean_tokens[0]}: {e}", file=sys.stderr)
+                print(f"myshell: error executing {tokens[0]}: {e}")
             else:
-                print(f"myshell: error executing {clean_tokens[0]}", file=sys.stderr)
+                print(f"myshell: error executing {tokens[0]}")
             sys.exit(1)
 
     elif pid > 0:
@@ -120,5 +123,5 @@ def execute_command(tokens, background=False):
                 return 0
 
     else:
-        print("myshell: error: failed to create child process (fork failed)", file=sys.stderr)
-        return 1
+        # fork() returned a negative value — fork failed
+        print("myshell: error: failed to create child process (fork failed)")
