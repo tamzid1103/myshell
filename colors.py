@@ -200,6 +200,11 @@ def format_palette():
     return "\n".join(lines)
 
 
+def build_prompt(dir_name):
+    """Build a styled, color-aware prompt string."""
+    return format_prompt()
+
+
 def format_prompt():
     """
     Construct a colorized shell prompt.
