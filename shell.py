@@ -41,7 +41,13 @@ import os
 import sys
 import signal
 
+try:
+    import readline
+except ImportError:
+    pass
+
 # ── MyShell Module Imports ────────────────────────────────────────────
+import colors
 from parser import parse_input
 from builtin_cmds import is_builtin, run_builtin, setup_history
 from completion import setup_completion
@@ -62,6 +68,7 @@ def display_banner():
 {cyan("║")}                                                              {cyan("║")}
 {cyan("║")}        A Custom Unix Shell — OS Lab Project                  {cyan("║")}
 {cyan("║")}        Type 'help' for available commands                    {cyan("║")}
+{cyan("║")}        Type 'color list' to customize terminal colors        {cyan("║")}
 {cyan("║")}                                                              {cyan("║")}
 {cyan("╚══════════════════════════════════════════════════════════════╝")}
 """
@@ -252,15 +259,18 @@ def main():
         reap_background_processes()
         try:
             # ── READ: Get user input ───────────────────────────────────
+            colors.apply_text_color()
             raw_input_str = input(get_prompt())
 
         except EOFError:
             # User pressed Ctrl+D — end of input stream
+            colors.restore_terminal()
             print("\nExiting MyShell. Goodbye!")
             sys.exit(0)
 
         except KeyboardInterrupt:
             # User pressed Ctrl+C — cancel current input, don't exit
+            colors.restore_terminal()
             print()  # Move to a new line
             continue
 
@@ -268,7 +278,8 @@ def main():
             # SEC-09: stdin can raise OSError if the terminal is detached
             # (e.g., stdin is a broken pipe or the controlling tty is gone).
             # Exit cleanly rather than crashing with an unhandled exception.
-            print(f"\nmyshell: terminal error: {e}")
+            colors.restore_terminal()
+            print(f"\nmyshell: terminal error: {e}", file=sys.stderr)
             sys.exit(1)
 
         # ── EVAL: Parse the input ──────────────────────────────────────
@@ -278,31 +289,8 @@ def main():
             # Empty input or syntax error — skip to next iteration
             continue
 
-<<<<<<< HEAD
         # ── DISPATCH: Route commands through conditional execution chain
         last_exit_code = dispatch_line(parsed, last_exit_code=last_exit_code)
-=======
-        # Extract the command name (first token)
-        command_name = parsed["tokens"][0]
-        command_args = parsed["tokens"][1:]
-
-        # ── DISPATCH: Route to the correct handler ─────────────────────
-
-        # 1. Check for piped commands (inter-process communication)
-        # Checked before standalone builtins so commands like `help | grep cd`
-        # are properly piped rather than executed standalone in the parent.
-        if parsed["is_pipe"]:
-            execute_pipeline(parsed["pipe_commands"], background=parsed["is_background"])
-            continue
-
-        # 2. Check for built-in commands (must run in parent process)
-        if is_builtin(command_name):
-            run_builtin(command_name, command_args)
-            continue
-
-        # 3. Single external command (fork + execvp)
-        execute_command(parsed["tokens"], background=parsed["is_background"])
->>>>>>> c471641 (fix(pipes): support builtins in pipelines, prioritize pipe routing, and harden fd cleanup)
 
 
 # ── Entry Point ───────────────────────────────────────────────────────
