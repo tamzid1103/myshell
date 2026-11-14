@@ -38,8 +38,12 @@ OS Concepts Demonstrated:
 import os
 import sys
 import shutil
+<<<<<<< HEAD
 from redirects import parse_redirections, apply_redirections
 from colors import yellow
+=======
+from builtin_cmds import is_builtin, run_builtin
+>>>>>>> c471641 (fix(pipes): support builtins in pipelines, prioritize pipe routing, and harden fd cleanup)
 
 # SEC-08: Maximum number of commands allowed in a single pipeline.
 # Prevents fork-bomb style DoS via `yes | yes | yes | ... (1000 times)`.
@@ -136,6 +140,7 @@ def execute_pipeline(commands, background=False):
                 except OSError:
                     pass
 
+<<<<<<< HEAD
             # Apply any explicit file redirections for this command
             apply_redirections(redirs)
 
@@ -144,19 +149,66 @@ def execute_pipeline(commands, background=False):
             resolved = shutil.which(clean_cmd[0])
             if resolved is None:
                 print(f"myshell: command not found: {clean_cmd[0]}", file=sys.stderr)
+=======
+            # If the command is a shell builtin, execute it directly in the subshell
+            if is_builtin(cmd[0]):
+                try:
+                    run_builtin(cmd[0], cmd[1:])
+                    sys.exit(0)
+                except SystemExit as se:
+                    sys.exit(se.code if se.code is not None else 0)
+                except Exception as e:
+                    if DEBUG:
+                        print(f"myshell: error executing builtin {cmd[0]}: {e}", file=sys.stderr)
+                    else:
+                        print(f"myshell: error executing builtin {cmd[0]}", file=sys.stderr)
+                    sys.exit(1)
+
+            # Resolve command path and verify file permissions
+            prog = cmd[0]
+            resolved = None
+
+            if "/" in prog or os.path.exists(prog):
+                if os.path.isdir(prog):
+                    print(f"myshell: {prog}: Is a directory", file=sys.stderr)
+                    sys.exit(126)
+                if not os.path.exists(prog):
+                    print(f"myshell: {prog}: No such file or directory", file=sys.stderr)
+                    sys.exit(127)
+                if not os.access(prog, os.X_OK):
+                    print(f"myshell: permission denied: {prog}", file=sys.stderr)
+                    sys.exit(126)
+                resolved = os.path.abspath(prog)
+            else:
+                # SEC-01: Search PATH safely using shutil.which()
+                resolved = shutil.which(prog)
+
+            if resolved is None:
+                print(f"myshell: command not found: {prog}", file=sys.stderr)
+>>>>>>> c471641 (fix(pipes): support builtins in pipelines, prioritize pipe routing, and harden fd cleanup)
                 sys.exit(127)
             try:
                 # os.execv uses the exact resolved path — no PATH lookup.
                 os.execv(resolved, clean_cmd)
             except PermissionError:
+<<<<<<< HEAD
                 print(f"myshell: permission denied: {clean_cmd[0]}", file=sys.stderr)
+=======
+                print(f"myshell: permission denied: {prog}", file=sys.stderr)
+>>>>>>> c471641 (fix(pipes): support builtins in pipelines, prioritize pipe routing, and harden fd cleanup)
                 sys.exit(126)
             except Exception as e:
                 # SEC-10: Only expose internal details in debug mode.
                 if DEBUG:
+<<<<<<< HEAD
                     print(f"myshell: error executing {clean_cmd[0]}: {e}", file=sys.stderr)
                 else:
                     print(f"myshell: error executing {clean_cmd[0]}", file=sys.stderr)
+=======
+                    print(f"myshell: error executing {prog}: {e}", file=sys.stderr)
+                else:
+                    print(f"myshell: error executing {prog}", file=sys.stderr)
+>>>>>>> c471641 (fix(pipes): support builtins in pipelines, prioritize pipe routing, and harden fd cleanup)
                 sys.exit(1)
 
         elif pid > 0:
@@ -165,11 +217,14 @@ def execute_pipeline(commands, background=False):
 
         else:
             # fork() failed — clean up before returning
-            print("myshell: error: fork failed during pipeline setup")
+            print("myshell: error: fork failed during pipeline setup", file=sys.stderr)
             # Close all pipe file descriptors to prevent leaks
             for read_fd, write_fd in pipe_fds:
                 try:
                     os.close(read_fd)
+                except OSError:
+                    pass
+                try:
                     os.close(write_fd)
                 except OSError:
                     pass
@@ -185,8 +240,14 @@ def execute_pipeline(commands, background=False):
     # CRITICAL: If the parent doesn't close the write-end of each pipe,
     # the reading child will never receive EOF and will hang forever.
     for read_fd, write_fd in pipe_fds:
-        os.close(read_fd)
-        os.close(write_fd)
+        try:
+            os.close(read_fd)
+        except OSError:
+            pass
+        try:
+            os.close(write_fd)
+        except OSError:
+            pass
 
     # ── Parent: Wait for ALL children to finish ────────────────────────
     pipeline_exit_code = 0
