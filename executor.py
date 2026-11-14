@@ -80,27 +80,44 @@ def execute_command(tokens, background=False):
 
     if pid == 0:
         # ── CHILD PROCESS ──────────────────────────────────────────────
-        # This is the child. Replace this process with the target program.
-        # After execvp(), none of the Python code below will execute
-        # because the process image is entirely replaced.
-        # SEC-01: Resolve the binary via shutil.which() before exec.
-        # This gives us an absolute path and avoids PATH injection:
-        # even if $PATH is tampered, we verify the real binary location.
-        resolved = shutil.which(tokens[0])
+        # Apply any explicit file redirections for this command
+        apply_redirections(redirs)
+
+        # Resolve command path and verify file permissions
+        prog = clean_tokens[0]
+        resolved = None
+
+        if "/" in prog or os.path.exists(prog):
+            if os.path.isdir(prog):
+                print(f"myshell: {prog}: Is a directory", file=sys.stderr)
+                sys.exit(126)
+            if not os.path.exists(prog):
+                print(f"myshell: {prog}: No such file or directory", file=sys.stderr)
+                sys.exit(127)
+            if not os.access(prog, os.X_OK):
+                print(f"myshell: permission denied: {prog}", file=sys.stderr)
+                sys.exit(126)
+            resolved = os.path.abspath(prog)
+        else:
+            # SEC-01: Search PATH safely using shutil.which()
+            resolved = shutil.which(prog)
+
         if resolved is None:
-            print(f"myshell: command not found: {tokens[0]}")
+            print(f"myshell: command not found: {prog}", file=sys.stderr)
             sys.exit(127)  # 127 = command not found (standard convention)
+
         try:
+            # os.execv takes an absolute path — no PATH lookup performed.
             os.execv(resolved, clean_tokens)
         except PermissionError:
-            # The binary exists but is not executable
-            print(f"myshell: permission denied: {tokens[0]}")
+            print(f"myshell: permission denied: {prog}", file=sys.stderr)
             sys.exit(126)  # 126 = permission denied (standard convention)
         except Exception as e:
+            # SEC-10: Only expose internal error details in debug mode.
             if DEBUG:
-                print(f"myshell: error executing {tokens[0]}: {e}")
+                print(f"myshell: error executing {prog}: {e}", file=sys.stderr)
             else:
-                print(f"myshell: error executing {tokens[0]}")
+                print(f"myshell: error executing {prog}", file=sys.stderr)
             sys.exit(1)
 
     elif pid > 0:

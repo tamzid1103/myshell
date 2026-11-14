@@ -38,12 +38,9 @@ OS Concepts Demonstrated:
 import os
 import sys
 import shutil
-<<<<<<< HEAD
 from redirects import parse_redirections, apply_redirections
 from colors import yellow
-=======
 from builtin_cmds import is_builtin, run_builtin
->>>>>>> c471641 (fix(pipes): support builtins in pipelines, prioritize pipe routing, and harden fd cleanup)
 
 # SEC-08: Maximum number of commands allowed in a single pipeline.
 # Prevents fork-bomb style DoS via `yes | yes | yes | ... (1000 times)`.
@@ -140,32 +137,25 @@ def execute_pipeline(commands, background=False):
                 except OSError:
                     pass
 
-<<<<<<< HEAD
             # Apply any explicit file redirections for this command
             apply_redirections(redirs)
 
-            # SEC-01: Resolve binary to absolute path via shutil.which()
-            # before exec, preventing PATH injection attacks.
-            resolved = shutil.which(clean_cmd[0])
-            if resolved is None:
-                print(f"myshell: command not found: {clean_cmd[0]}", file=sys.stderr)
-=======
             # If the command is a shell builtin, execute it directly in the subshell
-            if is_builtin(cmd[0]):
+            if is_builtin(clean_cmd[0]):
                 try:
-                    run_builtin(cmd[0], cmd[1:])
-                    sys.exit(0)
+                    res = run_builtin(clean_cmd[0], clean_cmd[1:])
+                    sys.exit(0 if res is None else res)
                 except SystemExit as se:
                     sys.exit(se.code if se.code is not None else 0)
                 except Exception as e:
                     if DEBUG:
-                        print(f"myshell: error executing builtin {cmd[0]}: {e}", file=sys.stderr)
+                        print(f"myshell: error executing builtin {clean_cmd[0]}: {e}", file=sys.stderr)
                     else:
-                        print(f"myshell: error executing builtin {cmd[0]}", file=sys.stderr)
+                        print(f"myshell: error executing builtin {clean_cmd[0]}", file=sys.stderr)
                     sys.exit(1)
 
             # Resolve command path and verify file permissions
-            prog = cmd[0]
+            prog = clean_cmd[0]
             resolved = None
 
             if "/" in prog or os.path.exists(prog):
@@ -185,30 +175,19 @@ def execute_pipeline(commands, background=False):
 
             if resolved is None:
                 print(f"myshell: command not found: {prog}", file=sys.stderr)
->>>>>>> c471641 (fix(pipes): support builtins in pipelines, prioritize pipe routing, and harden fd cleanup)
                 sys.exit(127)
             try:
                 # os.execv uses the exact resolved path — no PATH lookup.
                 os.execv(resolved, clean_cmd)
             except PermissionError:
-<<<<<<< HEAD
-                print(f"myshell: permission denied: {clean_cmd[0]}", file=sys.stderr)
-=======
                 print(f"myshell: permission denied: {prog}", file=sys.stderr)
->>>>>>> c471641 (fix(pipes): support builtins in pipelines, prioritize pipe routing, and harden fd cleanup)
                 sys.exit(126)
             except Exception as e:
                 # SEC-10: Only expose internal details in debug mode.
                 if DEBUG:
-<<<<<<< HEAD
-                    print(f"myshell: error executing {clean_cmd[0]}: {e}", file=sys.stderr)
-                else:
-                    print(f"myshell: error executing {clean_cmd[0]}", file=sys.stderr)
-=======
                     print(f"myshell: error executing {prog}: {e}", file=sys.stderr)
                 else:
                     print(f"myshell: error executing {prog}", file=sys.stderr)
->>>>>>> c471641 (fix(pipes): support builtins in pipelines, prioritize pipe routing, and harden fd cleanup)
                 sys.exit(1)
 
         elif pid > 0:
