@@ -2,7 +2,8 @@
 colors.py — MyShell ANSI Color Palette and Formatting
 ======================================================
 
-Provides ANSI escape sequences and helpers for colored terminal output.
+Provides ANSI escape sequences and helpers for colored terminal output,
+dynamic text color customization, and readline-compatible prompt styling.
 
 OS Concepts Demonstrated:
     - Terminal escape sequences (ANSI X3.64 / ECMA-48)
@@ -36,10 +37,27 @@ class Colors:
     RL_RESET   = "\001\033[0m\002"
     RL_BOLD    = "\001\033[1m\002"
     RL_GREEN   = "\001\033[1;92m\002"
-    RL_CYAN    = "\033[1;96m"
+    RL_CYAN    = "\001\033[1;96m\002"
     RL_BLUE    = "\001\033[1;94m\002"
     RL_YELLOW  = "\001\033[1;93m\002"
     RL_RED     = "\001\033[1;91m\002"
+
+
+COLOR_MAP = {
+    "red":     Colors.RED,
+    "green":   Colors.GREEN,
+    "yellow":  Colors.YELLOW,
+    "blue":    Colors.BLUE,
+    "magenta": Colors.MAGENTA,
+    "purple":  Colors.MAGENTA,
+    "cyan":    Colors.CYAN,
+    "white":   Colors.WHITE,
+    "black":   Colors.BLACK,
+}
+
+# Dynamic shell color state
+_active_text_color = None
+_active_prompt_color = None
 
 
 def is_color_enabled():
@@ -51,7 +69,7 @@ def is_color_enabled():
 
 def colorize(text, color_code):
     """Wrap text in an ANSI color code if coloring is supported."""
-    if not is_color_enabled():
+    if not is_color_enabled() or not color_code:
         return text
     return f"{color_code}{text}{Colors.RESET}"
 
@@ -80,6 +98,108 @@ def bold(text):
     return colorize(text, Colors.BOLD)
 
 
+def get_available_colors():
+    """Return a list of supported color names."""
+    return [c for c in COLOR_MAP.keys() if c != "purple"]
+
+
+def set_text_color(color_name):
+    """
+    Set active terminal text color.
+    Returns (success: bool, message: str).
+    """
+    global _active_text_color
+    if not color_name:
+        return False, "Usage: color <name> (e.g. green, cyan, blue, red, reset)"
+
+    normalized = color_name.strip().lower()
+    if normalized in ("reset", "default", "none"):
+        _active_text_color = None
+        restore_terminal()
+        return True, "Shell text color reset to default."
+
+    if normalized in COLOR_MAP:
+        _active_text_color = normalized
+        apply_text_color()
+        sample = colorize(normalized, COLOR_MAP[normalized])
+        return True, f"Shell text color set to {sample}."
+
+    available = ", ".join(get_available_colors())
+    return False, f"Unknown color '{color_name}'. Available: {available}, reset"
+
+
+def get_text_color():
+    return _active_text_color
+
+
+def set_prompt_color(color_name):
+    """
+    Set active prompt accent color.
+    Returns (success: bool, message: str).
+    """
+    global _active_prompt_color
+    normalized = color_name.strip().lower() if color_name else ""
+    if normalized in ("reset", "default", "none", ""):
+        _active_prompt_color = None
+        return True, "Shell prompt color reset to default."
+
+    if normalized in COLOR_MAP:
+        _active_prompt_color = normalized
+        sample = colorize(normalized, COLOR_MAP[normalized])
+        return True, f"Shell prompt color set to {sample}."
+
+    available = ", ".join(get_available_colors())
+    return False, f"Unknown color '{color_name}'. Available: {available}, reset"
+
+
+def get_prompt_color():
+    return _active_prompt_color
+
+
+def reset_all_colors():
+    global _active_text_color, _active_prompt_color
+    _active_text_color = None
+    _active_prompt_color = None
+    restore_terminal()
+
+
+def apply_text_color():
+    """Emit the active text color code to the terminal."""
+    if _active_text_color and _active_text_color in COLOR_MAP:
+        sys.stdout.write(COLOR_MAP[_active_text_color])
+        sys.stdout.flush()
+
+
+def restore_terminal():
+    """Reset terminal text styling."""
+    sys.stdout.write(Colors.RESET)
+    sys.stdout.flush()
+
+
+def format_palette():
+    """Return formatted palette of all available colors with visual samples."""
+    lines = [
+        cyan("╔══════════════════════════════════════════════════════════════╗"),
+        cyan("║                 MyShell Color Palette                        ║"),
+        cyan("╠══════════════════════════════════════════════════════════════╣"),
+        "║  Available Colors:                                           ║",
+    ]
+    for name in get_available_colors():
+        sample = colorize(f"■ {name:<10}", COLOR_MAP[name])
+        active_mark = " (active)" if name == _active_text_color else ""
+        lines.append(f"║    {sample}{active_mark:<16}                        ║")
+    lines.extend([
+        "║                                                              ║",
+        "║  Commands:                                                   ║",
+        "║    color <name>         Set terminal text color              ║",
+        "║    color prompt <name>  Set prompt accent color              ║",
+        "║    color reset          Reset terminal colors to default     ║",
+        "║    color list           Display this palette                 ║",
+        cyan("╚══════════════════════════════════════════════════════════════╝"),
+    ])
+    return "\n".join(lines)
+
+
 def format_prompt():
     """
     Construct a colorized shell prompt.
@@ -102,11 +222,18 @@ def format_prompt():
     if not is_color_enabled():
         return f"{user}@myshell:{display_dir}$ "
 
+    user_col = Colors.GREEN
+    shell_col = COLOR_MAP.get(_active_prompt_color, Colors.CYAN)
+    dir_col = Colors.BLUE
+
+    # If active text color is selected, set it at the end of prompt
+    text_code = f"\001{COLOR_MAP[_active_text_color]}\002" if _active_text_color in COLOR_MAP else ""
+
     return (
-        f"\001{Colors.BOLD}{Colors.GREEN}\002{user}"
+        f"\001{Colors.BOLD}{user_col}\002{user}"
         f"\001{Colors.RESET}\002@"
-        f"\001{Colors.BOLD}{Colors.CYAN}\002myshell"
+        f"\001{Colors.BOLD}{shell_col}\002myshell"
         f"\001{Colors.RESET}\002:"
-        f"\001{Colors.BOLD}{Colors.BLUE}\002{display_dir}"
-        f"\001{Colors.RESET}\002$ "
+        f"\001{Colors.BOLD}{dir_col}\002{display_dir}"
+        f"\001{Colors.RESET}\002$ {text_code}"
     )
