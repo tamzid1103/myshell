@@ -44,12 +44,16 @@ def builtin_cd(args):
 
     try:
         os.chdir(target)
+        return 0
     except FileNotFoundError:
-        print(f"myshell: cd: {target}: No such file or directory")
+        print(f"myshell: cd: {target}: No such file or directory", file=sys.stderr)
+        return 1
     except PermissionError:
-        print(f"myshell: cd: {target}: Permission denied")
+        print(f"myshell: cd: {target}: Permission denied", file=sys.stderr)
+        return 1
     except NotADirectoryError:
-        print(f"myshell: cd: {target}: Not a directory")
+        print(f"myshell: cd: {target}: Not a directory", file=sys.stderr)
+        return 1
 
 
 def builtin_exit(args):
@@ -76,6 +80,139 @@ def builtin_exit(args):
 
     print("Exiting MyShell. Goodbye!")
     sys.exit(exit_code)
+
+
+def builtin_export(args):
+    """
+    Set environment variables.
+
+    Usage:
+        export VAR=value
+        export VAR="value with spaces"
+        export (lists all exported variables)
+    """
+    if not args:
+        for k, v in sorted(os.environ.items()):
+            print(f"declare -x {k}=\"{v}\"")
+        return 0
+
+    exit_code = 0
+    for arg in args:
+        if "=" in arg:
+            key, val = arg.split("=", 1)
+        else:
+            key, val = arg, ""
+
+        # Strip surrounding quotes if present
+        if len(val) >= 2 and ((val[0] == '"' and val[-1] == '"') or (val[0] == "'" and val[-1] == "'")):
+            val = val[1:-1]
+
+        # Identifier check
+        if not key or not (key[0].isalpha() or key[0] == '_') or not all(c.isalnum() or c == '_' for c in key):
+            print(f"myshell: export: '{arg}': not a valid identifier", file=sys.stderr)
+            exit_code = 1
+            continue
+
+        os.environ[key] = val
+    return exit_code
+
+
+def builtin_unset(args):
+    """
+    Remove environment variables from the shell environment.
+
+    Usage:
+        unset VAR ...
+    """
+    if not args:
+        return 0
+
+    exit_code = 0
+    for var in args:
+        if not var or not (var[0].isalpha() or var[0] == '_') or not all(c.isalnum() or c == '_' for c in var):
+            print(f"myshell: unset: '{var}': not a valid identifier", file=sys.stderr)
+            exit_code = 1
+            continue
+        os.environ.pop(var, None)
+    return exit_code
+
+
+def builtin_env(args):
+    """
+    Print all environment variables.
+
+    Usage:
+        env
+    """
+    for k, v in sorted(os.environ.items()):
+        print(f"{k}={v}")
+    return 0
+
+
+try:
+    import readline
+except ImportError:
+    readline = None
+
+HISTORY_FILE = os.path.expanduser("~/.myshell_history")
+
+
+def setup_history():
+    """Load persistent command history from disk."""
+    if readline is None:
+        return
+    try:
+        readline.read_history_file(HISTORY_FILE)
+    except (FileNotFoundError, OSError):
+        pass
+
+    import atexit
+    def _save():
+        try:
+            readline.write_history_file(HISTORY_FILE)
+        except (PermissionError, OSError):
+            pass
+    atexit.register(_save)
+
+
+def builtin_history(args):
+    """
+    Print command history or clear it.
+
+    Usage:
+        history
+        history -c (clear history)
+    """
+    if readline is None:
+        print("myshell: history: readline not available", file=sys.stderr)
+        return 1
+
+    if args and args[0] == "-c":
+        readline.clear_history()
+        return 0
+
+    length = readline.get_current_history_length()
+    for i in range(1, length + 1):
+        item = readline.get_history_item(i)
+        print(f"  {i:4d}  {item}")
+    return 0
+
+
+def builtin_source(args):
+    """
+    Execute commands from a script file within the current shell environment.
+
+    Usage:
+        source script.sh
+        . script.sh
+    """
+    if not args:
+        print("myshell: source: filename argument required", file=sys.stderr)
+        return 1
+
+    filepath = os.path.expanduser(args[0])
+    from shell import run_script
+    return run_script(filepath, echo=True)
 
 
 def builtin_help(args):
@@ -124,9 +261,15 @@ def builtin_help(args):
 # Maps command name (string) → handler function.
 # To add a new builtin, simply add an entry here.
 BUILTINS = {
-    "cd":   builtin_cd,
-    "exit": builtin_exit,
-    "help": builtin_help,
+    "cd":      builtin_cd,
+    "exit":    builtin_exit,
+    "help":    builtin_help,
+    "export":  builtin_export,
+    "unset":   builtin_unset,
+    "env":     builtin_env,
+    "history": builtin_history,
+    "source":  builtin_source,
+    ".":       builtin_source,
 }
 
 
@@ -150,5 +293,12 @@ def run_builtin(command_name, args):
     Args:
         command_name (str): The builtin command name.
         args (list): Arguments to pass to the builtin function.
+
+    Returns:
+        int: Exit status code (0 for success, non-zero for failure).
     """
-    BUILTINS[command_name](args)
+    handler = BUILTINS.get(command_name)
+    if handler:
+        res = handler(args)
+        return 0 if res is None else res
+    return 1

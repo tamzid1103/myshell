@@ -43,68 +43,213 @@ import signal
 
 # ── MyShell Module Imports ────────────────────────────────────────────
 from parser import parse_input
-from builtin_cmds import is_builtin, run_builtin
+from builtin_cmds import is_builtin, run_builtin, setup_history
+from completion import setup_completion
+from colors import format_prompt, cyan, bold, yellow, red
 from executor import execute_command
 from pipes import execute_pipeline
+from variables import expand_variables
+from globbing import expand_globs
+from redirects import parse_redirections
 
 
 def display_banner():
     """Display the MyShell welcome banner on startup."""
-    banner = """
-╔══════════════════════════════════════════════════════════════╗
-║                                                              ║
-║               🐚  Welcome to MyShell  🐚                    ║
-║                                                              ║
-║        A Custom Unix Shell — OS Lab Project                  ║
-║        Type 'help' for available commands                    ║
-║                                                              ║
-╚══════════════════════════════════════════════════════════════╝
+    banner = f"""
+{cyan("╔══════════════════════════════════════════════════════════════╗")}
+{cyan("║")}                                                              {cyan("║")}
+{cyan("║")}               🐚  {bold("Welcome to MyShell")}  🐚                    {cyan("║")}
+{cyan("║")}                                                              {cyan("║")}
+{cyan("║")}        A Custom Unix Shell — OS Lab Project                  {cyan("║")}
+{cyan("║")}        Type 'help' for available commands                    {cyan("║")}
+{cyan("║")}                                                              {cyan("║")}
+{cyan("╚══════════════════════════════════════════════════════════════╝")}
 """
     print(banner)
 
 
 def get_prompt():
     """
-    Build the shell prompt string.
+    Build the shell prompt string with ANSI colors.
+    """
+    return format_prompt()
 
-    Displays the current working directory's basename for context,
-    similar to how bash shows the directory in the prompt.
+
+def dispatch_segment(segment, background=False, last_exit_code=0):
+    """
+    Dispatch a single command segment (single command or pipeline).
+
+    Args:
+        segment (dict): Command segment with 'tokens', 'is_pipe', 'pipe_commands'.
+        background (bool): Whether to run asynchronously.
+        last_exit_code (int): Previous exit code for variable expansion ($?).
 
     Returns:
-        str: The formatted prompt string.
+        int: Exit status code.
+    """
+    tokens = segment["tokens"]
+
+    # 1. Expand environment variables ($VAR, $?, $$)
+    tokens = expand_variables(tokens, last_exit_code=last_exit_code)
+
+    # 2. Check for piped commands (inter-process communication)
+    if segment.get("is_pipe"):
+        pipe_commands = []
+        for cmd in segment["pipe_commands"]:
+            cmd_vars = expand_variables(cmd, last_exit_code=last_exit_code)
+            cmd_globs = expand_globs(cmd_vars)
+            pipe_commands.append(cmd_globs)
+        return execute_pipeline(pipe_commands, background=background)
+
+    # 3. Expand wildcards / globs (*, ?) for non-piped commands
+    tokens = expand_globs(tokens)
+
+    # 3. Check for built-in commands (executed in parent process)
+    clean_tokens, redirs, err = parse_redirections(tokens)
+    if err:
+        print(f"myshell: {err}", file=sys.stderr)
+        return 2
+
+    if not clean_tokens:
+        # Bare redirection without command (e.g. `> file`)
+        return execute_command(tokens, background=background)
+
+    cmd_name = clean_tokens[0]
+    cmd_args = clean_tokens[1:]
+
+    if is_builtin(cmd_name):
+        saved_stdout = None
+        saved_stdin = None
+        try:
+            if redirs.get("stdout_file"):
+                flags = os.O_WRONLY | os.O_CREAT | (os.O_APPEND if redirs.get("append") else os.O_TRUNC)
+                fd_out = os.open(redirs["stdout_file"], flags, 0o644)
+                saved_stdout = os.dup(sys.stdout.fileno())
+                os.dup2(fd_out, sys.stdout.fileno())
+                os.close(fd_out)
+            if redirs.get("stdin_file"):
+                fd_in = os.open(redirs["stdin_file"], os.O_RDONLY)
+                saved_stdin = os.dup(sys.stdin.fileno())
+                os.dup2(fd_in, sys.stdin.fileno())
+                os.close(fd_in)
+            return run_builtin(cmd_name, cmd_args)
+        except OSError as e:
+            print(f"myshell: {e}", file=sys.stderr)
+            return 1
+        finally:
+            if saved_stdout is not None:
+                os.dup2(saved_stdout, sys.stdout.fileno())
+                os.close(saved_stdout)
+            if saved_stdin is not None:
+                os.dup2(saved_stdin, sys.stdin.fileno())
+                os.close(saved_stdin)
+
+    # 4. Single external command (fork + execvp + waitpid)
+    return execute_command(tokens, background=background)
+
+
+def dispatch_line(parsed, last_exit_code=0):
+    """
+    Execute a parsed command line respecting logical operators (&&, ||).
+
+    Args:
+        parsed (dict): The output of parse_input().
+        last_exit_code (int): Current exit status before line execution.
+
+    Returns:
+        int: Final exit status.
+    """
+    for segment in parsed["chain"]:
+        op = segment["op"]
+        if op == "&&" and last_exit_code != 0:
+            continue
+        if op == "||" and last_exit_code == 0:
+            continue
+
+        last_exit_code = dispatch_segment(
+            segment,
+            background=parsed["is_background"],
+            last_exit_code=last_exit_code,
+        )
+
+    return last_exit_code
+
+
+def reap_background_processes():
+    """
+    Reap any terminated background child processes without blocking.
+    Demonstrates asynchronous process cleanup via os.waitpid(-1, os.WNOHANG).
+    """
+    while True:
+        try:
+            pid, _ = os.waitpid(-1, os.WNOHANG)
+            if pid <= 0:
+                break
+        except (ChildProcessError, OSError):
+            break
+
+
+def run_script(filepath, echo=True):
+    """
+    Execute commands from a script file sequentially (batch processing).
+
+    Args:
+        filepath (str): Path to the script file.
+        echo (bool): If True, echo commands before executing (myshell> ...).
+
+    Returns:
+        int: Exit status of the last executed command.
     """
     try:
-        cwd = os.getcwd()
-        # Show just the directory name, not the full path
-        dir_name = os.path.basename(cwd) or cwd
-    except OSError:
-        dir_name = "?"
-
-    return f"myshell [{dir_name}]> "
+        with open(filepath, "r") as f:
+            last_code = 0
+            for line in f:
+                reap_background_processes()
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if echo:
+                    print(f"myshell> {line}")
+                parsed = parse_input(line)
+                if parsed:
+                    last_code = dispatch_line(parsed, last_exit_code=last_code)
+            return last_code
+    except FileNotFoundError:
+        print(f"myshell: script not found: {filepath}", file=sys.stderr)
+        return 1
+    except PermissionError:
+        print(f"myshell: permission denied: {filepath}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"myshell: error reading {filepath}: {e}", file=sys.stderr)
+        return 1
 
 
 def main():
     """
-    The main REPL loop for MyShell.
-
-    This function:
-    1. Sets up signal handling to prevent zombie processes
-    2. Displays the welcome banner
-    3. Enters an infinite loop that reads, parses, and dispatches commands
-    4. Handles Ctrl+C (SIGINT) and Ctrl+D (EOF) gracefully
+    Main entry point for MyShell. Supports interactive REPL and batch script modes.
     """
-
     # ── Signal Setup ───────────────────────────────────────────────────
-    # SIGCHLD is sent to the parent when a child process terminates.
-    # SIG_IGN tells the kernel: "I don't care, just clean it up."
-    # This prevents zombie processes from background commands ('cmd &').
-    signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+    # In v2.0 with exit code tracking and logical operators ($?, &&, ||),
+    # foreground processes need reliable os.waitpid() exit codes.
+    # Background processes are reaped non-blocking via reap_background_processes().
+    signal.signal(signal.SIGCHLD, signal.SIG_DFL)
 
-    # ── Welcome Banner ────────────────────────────────────────────────
+    # ── Script Execution Mode: python3 shell.py <script_file> ──────────
+    if len(sys.argv) > 1:
+        script_file = sys.argv[1]
+        exit_code = run_script(script_file, echo=True)
+        sys.exit(exit_code)
+
+    # ── Interactive REPL Mode Setup ────────────────────────────────────
+    setup_history()
+    setup_completion()
     display_banner()
 
     # ── REPL Loop ──────────────────────────────────────────────────────
+    last_exit_code = 0
     while True:
+        reap_background_processes()
         try:
             # ── READ: Get user input ───────────────────────────────────
             raw_input_str = input(get_prompt())
@@ -133,24 +278,8 @@ def main():
             # Empty input or syntax error — skip to next iteration
             continue
 
-        # Extract the command name (first token)
-        command_name = parsed["tokens"][0]
-        command_args = parsed["tokens"][1:]
-
-        # ── DISPATCH: Route to the correct handler ─────────────────────
-
-        # 1. Check for built-in commands (must run in parent process)
-        if is_builtin(command_name):
-            run_builtin(command_name, command_args)
-            continue
-
-        # 2. Check for piped commands (inter-process communication)
-        if parsed["is_pipe"]:
-            execute_pipeline(parsed["pipe_commands"], background=parsed["is_background"])
-            continue
-
-        # 3. Single external command (fork + execvp)
-        execute_command(parsed["tokens"], background=parsed["is_background"])
+        # ── DISPATCH: Route commands through conditional execution chain
+        last_exit_code = dispatch_line(parsed, last_exit_code=last_exit_code)
 
 
 # ── Entry Point ───────────────────────────────────────────────────────
