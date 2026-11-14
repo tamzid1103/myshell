@@ -69,13 +69,13 @@ def execute_pipeline(commands, background=False):
     """
     if len(commands) < 2:
         # Should not happen (parser ensures at least 2 commands for a pipe)
-        print("myshell: pipe error: need at least two commands")
-        return
+        print("myshell: pipe error: need at least two commands", file=sys.stderr)
+        return 1
 
     # SEC-08: Enforce pipeline depth limit to prevent fork-bomb DoS.
     if len(commands) > MAX_PIPELINE_DEPTH:
-        print(f"myshell: pipe error: pipeline too long (max {MAX_PIPELINE_DEPTH} commands)")
-        return
+        print(f"myshell: pipe error: pipeline too long (max {MAX_PIPELINE_DEPTH} commands)", file=sys.stderr)
+        return 1
 
     # ── Create all pipes ───────────────────────────────────────────────
     # For N commands, we need N-1 pipes.
@@ -213,7 +213,7 @@ def execute_pipeline(commands, background=False):
                     os.waitpid(orphan_pid, 0)
                 except (ChildProcessError, OSError):
                     pass
-            return
+            return 1
 
     # ── Parent: Close ALL pipe file descriptors ────────────────────────
     # CRITICAL: If the parent doesn't close the write-end of each pipe,

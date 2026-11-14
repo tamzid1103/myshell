@@ -141,4 +141,5 @@ def execute_command(tokens, background=False):
 
     else:
         # fork() returned a negative value — fork failed
-        print("myshell: error: failed to create child process (fork failed)")
+        print("myshell: error: failed to create child process (fork failed)", file=sys.stderr)
+        return 1

@@ -16,16 +16,13 @@ It continuously:
 
 Signal Handling (OS Concept):
     At startup, we set:
-        signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+        signal.signal(signal.SIGCHLD, signal.SIG_DFL)
 
-    This tells the Linux kernel to automatically clean up (reap) child
-    processes when they terminate. Without this, background processes
-    ('command &') would become zombies — entries stuck in the process
-    table because the parent never called wait() on them.
-
-    A zombie process has finished executing but still occupies a slot in
-    the kernel's process table. If too many accumulate, the system can't
-    create new processes. SIG_IGN prevents this entirely.
+    In v2.0 with exit code tracking ($?) and conditional operators (&&, ||),
+    the parent process needs accurate process exit statuses via os.waitpid().
+    Background processes ('command &') are cleaned up asynchronously using
+    non-blocking reaping: os.waitpid(-1, os.WNOHANG) on every loop iteration,
+    completely preventing zombie processes while preserving exit code accuracy.
 
 Usage:
     $ python3 shell.py
