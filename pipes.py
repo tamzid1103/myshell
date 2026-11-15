@@ -41,6 +41,7 @@ import shutil
 from redirects import parse_redirections, apply_redirections
 from colors import yellow
 from builtin_cmds import is_builtin, run_builtin
+from executor import check_destructive_command
 
 # SEC-08: Maximum number of commands allowed in a single pipeline.
 # Prevents fork-bomb style DoS via `yes | yes | yes | ... (1000 times)`.
@@ -108,6 +109,12 @@ def execute_pipeline(commands, background=False):
 
             if not clean_cmd:
                 sys.exit(0)
+
+            # Security check: prevent catastrophic file/directory removal
+            sec_err = check_destructive_command(clean_cmd)
+            if sec_err:
+                print(sec_err, file=sys.stderr)
+                sys.exit(1)
 
             # Set up this child's stdin/stdout based on its position
             # in the pipeline.

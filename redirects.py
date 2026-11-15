@@ -22,6 +22,20 @@ OS Concepts Demonstrated:
 import os
 import sys
 
+# Critical system files protected against destructive redirection overwrite
+PROTECTED_SYSTEM_FILES = {
+    "/etc/passwd", "/etc/shadow", "/etc/sudoers",
+    "/etc/gshadow", "/etc/group"
+}
+
+
+def is_protected_file(filepath):
+    """Check if the given path targets a sensitive system file."""
+    if not filepath:
+        return False
+    norm = os.path.normpath(os.path.expanduser(filepath))
+    return norm in PROTECTED_SYSTEM_FILES
+
 
 def parse_redirections(tokens):
     """
@@ -120,6 +134,10 @@ def apply_redirections(redirections):
     # Handle Output Redirection (> or >>)
     stdout_file = redirections.get("stdout_file")
     if stdout_file:
+        if is_protected_file(stdout_file):
+            print(f"myshell: security warning: redirection to sensitive system file '{stdout_file}' is blocked", file=sys.stderr)
+            sys.exit(1)
+
         flags = os.O_WRONLY | os.O_CREAT
         if redirections.get("append"):
             flags |= os.O_APPEND

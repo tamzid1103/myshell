@@ -261,10 +261,15 @@ def builtin_env(args):
 
 
 def setup_history():
-    """Load persistent command history from disk on startup."""
+    """Load persistent command history from disk on startup with secure file permissions."""
     if readline is None:
         return
     try:
+        if os.path.exists(HISTORY_FILE):
+            try:
+                os.chmod(HISTORY_FILE, 0o600)
+            except OSError:
+                pass
         readline.read_history_file(HISTORY_FILE)
     except (FileNotFoundError, OSError):
         pass
@@ -272,6 +277,18 @@ def setup_history():
     import atexit
     def _save():
         try:
+            # Set restrictive file permissions (0o600: read/write by owner only)
+            if not os.path.exists(HISTORY_FILE):
+                try:
+                    fd = os.open(HISTORY_FILE, os.O_WRONLY | os.O_CREAT, 0o600)
+                    os.close(fd)
+                except OSError:
+                    pass
+            else:
+                try:
+                    os.chmod(HISTORY_FILE, 0o600)
+                except OSError:
+                    pass
             readline.write_history_file(HISTORY_FILE)
         except (PermissionError, OSError):
             pass

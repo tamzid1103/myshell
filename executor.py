@@ -43,6 +43,31 @@ from colors import yellow, red
 # SEC-10: Set MYSHELL_DEBUG=1 to see full error details from child processes.
 DEBUG = os.environ.get("MYSHELL_DEBUG", "0") == "1"
 
+# Critical system directories and files protected against destructive removal commands
+PROTECTED_SYSTEM_PATHS = {
+    "/", "/bin", "/sbin", "/usr", "/usr/bin", "/usr/sbin",
+    "/etc", "/boot", "/dev", "/sys", "/proc", "/root",
+    "/etc/passwd", "/etc/shadow", "/etc/sudoers"
+}
+
+
+def check_destructive_command(clean_tokens):
+    """
+    Prevent accidental catastrophic deletion of root and critical system directories.
+    Blocks removal commands targeting protected paths (e.g., `rm -rf /` or expanded `/*`).
+    """
+    if not clean_tokens:
+        return None
+    cmd = os.path.basename(clean_tokens[0])
+    if cmd in ("rm", "rmdir", "unlink"):
+        for arg in clean_tokens[1:]:
+            if arg.startswith("-"):
+                continue  # skip flags like -r, -f
+            norm = os.path.normpath(os.path.expanduser(arg))
+            if norm in PROTECTED_SYSTEM_PATHS:
+                return f"myshell: security warning: removal of protected system path '{arg}' is blocked"
+    return None
+
 
 def execute_command(tokens, background=False):
     """
@@ -75,6 +100,12 @@ def execute_command(tokens, background=False):
                 print(f"myshell: {redirs['stdout_file']}: {e}", file=sys.stderr)
                 return 1
         return 0
+
+    # Security check: prevent catastrophic file/directory removal
+    sec_err = check_destructive_command(clean_tokens)
+    if sec_err:
+        print(sec_err, file=sys.stderr)
+        return 1
 
     pid = os.fork()
 
