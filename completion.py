@@ -76,9 +76,14 @@ def get_path_candidates(prefix):
     return sorted(formatted_matches)
 
 
+# Cache for current completion sequence to prevent repetitive disk rescans
+_cached_options = []
+
+
 def completer(text, state):
     """
     Completion callback invoked by readline.
+    Caches candidates when state == 0 to eliminate repetitive disk scanning loops.
 
     Args:
         text (str): The current word prefix being completed.
@@ -87,27 +92,29 @@ def completer(text, state):
     Returns:
         str or None: The completion candidate, or None when exhausted.
     """
+    global _cached_options
     if readline is None:
         return None
 
-    try:
-        line_buffer = readline.get_line_buffer()
-        begidx = readline.get_begidx()
-    except Exception:
-        line_buffer = ""
-        begidx = 0
+    if state == 0:
+        try:
+            line_buffer = readline.get_line_buffer()
+            begidx = readline.get_begidx()
+        except Exception:
+            line_buffer = ""
+            begidx = 0
 
-    # Determine if we're completing the command (first token) or an argument
-    prefix_line = line_buffer[:begidx].strip()
-    is_command_position = (prefix_line == "")
+        # Determine if we're completing the command (first token) or an argument
+        prefix_line = line_buffer[:begidx].strip()
+        is_command_position = (prefix_line == "")
 
-    if is_command_position and not text.startswith((".", "/", "~")):
-        options = get_command_candidates(text)
-    else:
-        options = get_path_candidates(text)
+        if is_command_position and not text.startswith((".", "/", "~")):
+            _cached_options = get_command_candidates(text)
+        else:
+            _cached_options = get_path_candidates(text)
 
-    if state < len(options):
-        return options[state]
+    if state < len(_cached_options):
+        return _cached_options[state]
     return None
 
 

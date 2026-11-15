@@ -193,9 +193,15 @@ def reap_background_processes():
             break
 
 
+# Call stack for source execution to prevent infinite recursive loops
+_active_source_stack = []
+MAX_SOURCE_DEPTH = 16
+
+
 def run_script(filepath, echo=True):
     """
     Execute commands from a script file sequentially (batch processing).
+    Includes loop and recursion depth protection.
 
     Args:
         filepath (str): Path to the script file.
@@ -204,6 +210,16 @@ def run_script(filepath, echo=True):
     Returns:
         int: Exit status of the last executed command.
     """
+    real_path = os.path.realpath(os.path.expanduser(filepath))
+    if real_path in _active_source_stack:
+        print(f"myshell: source: recursive loop detected for '{filepath}'", file=sys.stderr)
+        return 1
+
+    if len(_active_source_stack) >= MAX_SOURCE_DEPTH:
+        print(f"myshell: source: maximum script nesting depth ({MAX_SOURCE_DEPTH}) exceeded", file=sys.stderr)
+        return 1
+
+    _active_source_stack.append(real_path)
     try:
         with open(filepath, "r") as f:
             last_code = 0
@@ -227,6 +243,9 @@ def run_script(filepath, echo=True):
     except Exception as e:
         print(f"myshell: error reading {filepath}: {e}", file=sys.stderr)
         return 1
+    finally:
+        if _active_source_stack and _active_source_stack[-1] == real_path:
+            _active_source_stack.pop()
 
 
 def main():
@@ -288,6 +307,7 @@ def main():
 
         # ── DISPATCH: Route commands through conditional execution chain
         last_exit_code = dispatch_line(parsed, last_exit_code=last_exit_code)
+        colors.restore_terminal()
 
 
 # ── Entry Point ───────────────────────────────────────────────────────
