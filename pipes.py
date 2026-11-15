@@ -177,8 +177,9 @@ def execute_pipeline(commands, background=False):
                     sys.exit(126)
                 resolved = os.path.abspath(prog)
             else:
-                # SEC-01: Search PATH safely using shutil.which()
-                resolved = shutil.which(prog)
+                # SEC-01: Search PATH safely using shutil.which() with fallback to os.defpath
+                search_path = os.environ.get("PATH") or os.defpath
+                resolved = shutil.which(prog, path=search_path)
 
             if resolved is None:
                 print(f"myshell: command not found: {prog}", file=sys.stderr)

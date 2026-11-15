@@ -32,8 +32,8 @@ def get_command_candidates(prefix):
     except ImportError:
         pass
 
-    # 2. Executables from PATH
-    path_dirs = os.environ.get("PATH", "").split(os.pathsep)
+    # 2. Executables from PATH (fallback to os.defpath if unset/empty)
+    path_dirs = (os.environ.get("PATH") or os.defpath).split(os.pathsep)
     for p_dir in path_dirs:
         if not p_dir or not os.path.isdir(p_dir):
             continue

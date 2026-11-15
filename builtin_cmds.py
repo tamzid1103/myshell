@@ -28,6 +28,7 @@ OS Concepts Demonstrated:
 
 import os
 import sys
+import shutil
 
 # Optional import for colors module
 try:
@@ -341,6 +342,77 @@ def builtin_source(args):
     return run_script(filepath, echo=True)
 
 
+def builtin_pwd(args):
+    """
+    Print the current working directory.
+
+    OS Concept: Retrieves the current working directory from the process control block.
+    """
+    try:
+        print(os.getcwd())
+        return 0
+    except OSError as e:
+        print(f"myshell: pwd: error retrieving current directory: {e}", file=sys.stderr)
+        return 1
+
+
+def builtin_echo(args):
+    """
+    Display a line of text / arguments.
+    Supports -n option (do not output trailing newline).
+    """
+    if not args:
+        print()
+        return 0
+
+    trailing_newline = True
+    start_idx = 0
+    while start_idx < len(args) and args[start_idx] == "-n":
+        trailing_newline = False
+        start_idx += 1
+
+    output = " ".join(args[start_idx:])
+    if trailing_newline:
+        print(output)
+    else:
+        print(output, end="")
+        sys.stdout.flush()
+    return 0
+
+
+def builtin_clear(args):
+    """
+    Clear the terminal screen using standard ANSI escape sequences.
+    """
+    # ANSI clear screen (\033[2J) and move cursor to home position (\033[H)
+    sys.stdout.write("\033[2J\033[H")
+    sys.stdout.flush()
+    return 0
+
+
+def builtin_type(args):
+    """
+    Display information about command type (builtin, alias, or executable file).
+    """
+    if not args:
+        print("myshell: type: missing operand", file=sys.stderr)
+        return 1
+
+    status = 0
+    for cmd in args:
+        if cmd in BUILTINS:
+            print(f"{cmd} is a shell builtin")
+        else:
+            search_path = os.environ.get("PATH") or os.defpath
+            resolved = shutil.which(cmd, path=search_path)
+            if resolved:
+                print(f"{cmd} is {resolved}")
+            else:
+                print(f"myshell: type: {cmd}: not found", file=sys.stderr)
+                status = 1
+    return status
+
+
 def builtin_help(args):
     """
     Display help information about MyShell and its built-in commands.
@@ -358,6 +430,10 @@ def builtin_help(args):
 ║                                                                      ║
 ║  Built-in Commands:                                                  ║
 ║    cd [dir]             Change directory (default: $HOME)            ║
+║    pwd                  Print current working directory              ║
+║    echo [text ...]      Display a line of text (supports -n)         ║
+║    clear / cls          Clear the terminal screen                    ║
+║    type <name ...>      Display command classification and path      ║
 ║    color [name]         Change terminal text / prompt color          ║
 ║    export [VAR=val]     Set environment variable(s) or list them     ║
 ║    unset [VAR ...]      Unset environment variable(s)                ║
@@ -409,6 +485,11 @@ def builtin_help(args):
 # Maps command name (string) → handler function.
 BUILTINS = {
     "cd":      builtin_cd,
+    "pwd":     builtin_pwd,
+    "echo":    builtin_echo,
+    "clear":   builtin_clear,
+    "cls":     builtin_clear,
+    "type":    builtin_type,
     "color":   builtin_color,
     "colour":  builtin_color,
     "exit":    builtin_exit,
