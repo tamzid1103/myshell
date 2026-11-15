@@ -57,6 +57,10 @@ Commands that alter the parent shell process or provide shell-internal utilities
 | Command | Arguments | Description | Example |
 |---|---|---|---|
 | `cd` | `[directory]` | Change working directory (defaults to `$HOME`) | `cd /tmp`, `cd ~`, `cd ..` |
+| `pwd` | — | Print the current working directory | `pwd` |
+| `echo` | `[-n] [text ...]` | Display text to stdout (supports `-n` without newline) | `echo "Hello"`, `echo -n "user: "` |
+| `clear` / `cls` | — | Clear terminal screen using ANSI escape sequences | `clear`, `cls` |
+| `type` | `<name ...>` | Display command classification and resolved binary path | `type cd`, `type ls`, `type pwd` |
 | `color` / `colour` | `[name \| list \| prompt \| reset]` | Customize shell text and prompt colors | `color green`, `color list` |
 | `export` | `[VAR=val ...]` | Set process environment variable(s) or list them | `export FOO="bar"`, `export` |
 | `unset` | `[VAR ...]` | Remove variable(s) from shell environment | `unset FOO` |
@@ -158,7 +162,7 @@ myshell/
 │
 ├── shell.py          # REPL loop, banner, batch execution, and execution dispatch
 ├── parser.py         # Lexical tokenization (shlex), logical operators (&&, ||), pipes
-├── builtin_cmds.py   # Builtins: cd, color, export, unset, env, history, source, exit, help
+├── builtin_cmds.py   # Builtins: cd, pwd, echo, clear, type, color, export, unset, env, history, source, exit, help
 ├── colors.py         # ANSI color codes, dynamic text coloring, palette, styled prompt
 ├── executor.py       # Single-command execution (fork + execv + waitpid + path validation)
 ├── pipes.py          # Multi-stage pipeline execution (pipe + dup2 + fork + subshell builtins)
@@ -200,6 +204,11 @@ myshell/
 |---|---|
 | Empty input (pressing Enter) | Silently prompts again without error |
 | Unknown command | Prints `myshell: command not found: <cmd>`, returns exit code 127 |
+| Unset / empty `$PATH` | Falls back safely to standard system path (`/bin:/usr/bin`) via `os.defpath` |
+| Destructive file removal (`rm -rf /`, `/etc`, etc.) | Intercepted and blocked before execution, protecting core system directories |
+| Destructive redirection overwrite (`> /etc/passwd`) | Intercepted and blocked before opening, safeguarding sensitive system files |
+| Recursive script sourcing loop (`source a.sh` -> `b.sh` -> `a.sh`) | Cycle and call-stack depth detected (`MAX_SOURCE_DEPTH = 16`); aborts safely |
+| Command history file privacy | Sets restrictive user-only permissions (`0o600`) on `~/.myshell_history` |
 | Directory executed as command | Prints `myshell: <path>: Is a directory`, returns exit code 126 |
 | File without execute permissions | Prints `myshell: permission denied: <path>`, returns exit code 126 |
 | Nonexistent path execution | Prints `myshell: <path>: No such file or directory`, returns exit code 127 |

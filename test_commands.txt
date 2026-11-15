@@ -163,6 +163,32 @@ nonexistent_command
 # Expected: "myshell: /tmp: Is a directory"
 /tmp
 
-# ─── Test 14: Clean Exit ───────────────────────────────────────────────
+# ─── Test 14: Built-in Command Inspection & Classification (type) ──────
+# Expected: Identifies builtins vs external binaries vs missing commands
+type cd
+type pwd
+type echo
+type ls
+type nonexistent_tool_xyz
+
+# ─── Test 15: Screen Clearing (clear / cls) ───────────────────────────
+# Expected: Clears the terminal screen via ANSI escape codes
+clear
+
+# ─── Test 16: Security Safeguards (System Path Protection) ─────────────
+# Expected: Blocks destructive removal targeting root or system directories
+rm -rf /
+rm -rf /etc
+
+# Expected: Blocks destructive truncation/redirection to sensitive files
+echo "hacked" > /etc/passwd
+
+# ─── Test 17: Recursive Sourcing Loop Prevention ───────────────────────
+# Expected: Detects circular sourcing and stops with error instead of infinite loop
+echo "source /tmp/myshell_loop_test.sh" > /tmp/myshell_loop_test.sh
+source /tmp/myshell_loop_test.sh
+rm -f /tmp/myshell_loop_test.sh
+
+# ─── Test 18: Clean Exit ───────────────────────────────────────────────
 # Expected: Prints goodbye message, resets terminal colors, and exits cleanly
 exit
