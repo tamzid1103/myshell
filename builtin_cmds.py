@@ -29,6 +29,7 @@ OS Concepts Demonstrated:
 import os
 import sys
 import shutil
+import signal
 
 # Optional import for colors module
 try:
@@ -390,6 +391,120 @@ def builtin_clear(args):
     return 0
 
 
+def builtin_jobs(args):
+    """
+    List active background jobs tracked in the job registry.
+
+    OS Concept: Job control — the shell maintains a process table of background
+    jobs (like the kernel maintains the system-wide process table). Each entry
+    maps a job ID to its PID and command string.
+
+    Usage:
+        jobs
+
+    Returns:
+        int: 0 (always succeeds; prints nothing if no jobs are running).
+    """
+    try:
+        import jobs as _jobs_registry
+    except ImportError:
+        print("myshell: jobs: job registry not available", file=sys.stderr)
+        return 1
+
+    job_list = _jobs_registry.list_jobs()
+    if not job_list:
+        print("myshell: no background jobs")
+        return 0
+
+    for job in job_list:
+        print(f"[{job['jid']}]  {job['status']:<10}  {job['pid']}  {job['cmd']}")
+    return 0
+
+
+def builtin_kill(args):
+    """
+    Send a signal to a process by PID.
+
+    OS Concept: Signals are asynchronous notifications sent to processes by the
+    kernel or other processes. os.kill(pid, sig) is the Python interface to the
+    kill(2) system call, which delivers a signal to any process the user owns.
+
+    Common signals:
+        SIGTERM (15) — polite termination request (default)
+        SIGKILL  (9) — forced kill, cannot be caught or ignored
+        SIGSTOP (19) — pause the process
+        SIGCONT (18) — resume a paused process
+
+    Usage:
+        kill <pid>           Send SIGTERM (default)
+        kill -9 <pid>        Send SIGKILL (force kill)
+        kill -SIGTERM <pid>  Send by name
+        kill -l              List common signal names
+
+    Returns:
+        int: 0 on success, 1 on error.
+    """
+    if not args:
+        print("Usage: kill [-<signal>] <pid> [pid ...]", file=sys.stderr)
+        print("       kill -l    (list signal names)", file=sys.stderr)
+        return 1
+
+    # Handle `kill -l` (list signals)
+    if args[0] in ("-l", "--list"):
+        common = {
+            "1": "SIGHUP",  "2": "SIGINT",  "3": "SIGQUIT",
+            "9": "SIGKILL", "15": "SIGTERM", "17": "SIGCHLD",
+            "18": "SIGCONT", "19": "SIGSTOP",
+        }
+        for num, name in sorted(common.items(), key=lambda x: int(x[0])):
+            print(f"  {num:>3}) {name}")
+        return 0
+
+    # Parse optional signal flag (-9, -SIGTERM, -TERM)
+    sig = signal.SIGTERM   # default
+    pid_args = args
+
+    if args[0].startswith("-"):
+        sig_str = args[0][1:]
+        pid_args = args[1:]
+        if not pid_args:
+            print("myshell: kill: missing pid argument", file=sys.stderr)
+            return 1
+        try:
+            sig = int(sig_str)
+        except ValueError:
+            sig_name = sig_str.upper()
+            if not sig_name.startswith("SIG"):
+                sig_name = "SIG" + sig_name
+            try:
+                sig = getattr(signal, sig_name)
+            except AttributeError:
+                print(f"myshell: kill: {args[0]}: invalid signal specification", file=sys.stderr)
+                return 1
+
+    exit_code = 0
+    for pid_str in pid_args:
+        try:
+            pid = int(pid_str)
+        except ValueError:
+            print(f"myshell: kill: {pid_str}: invalid PID", file=sys.stderr)
+            exit_code = 1
+            continue
+        try:
+            os.kill(pid, sig)
+        except ProcessLookupError:
+            print(f"myshell: kill: ({pid}): No such process", file=sys.stderr)
+            exit_code = 1
+        except PermissionError:
+            print(f"myshell: kill: ({pid}): Operation not permitted", file=sys.stderr)
+            exit_code = 1
+        except OSError as e:
+            print(f"myshell: kill: ({pid}): {e}", file=sys.stderr)
+            exit_code = 1
+
+    return exit_code
+
+
 def builtin_type(args):
     """
     Display information about command type (builtin, alias, or executable file).
@@ -441,6 +556,9 @@ def builtin_help(args):
 ║    history [-c]         Show or clear command history                ║
 ║    source <file> / .    Execute commands from a script file          ║
 ║    exit [code]          Exit the shell (default code: 0)             ║
+║    jobs                 List active background jobs (pid + command)  ║
+║    kill [-sig] <pid>    Send signal to process (default: SIGTERM)    ║
+║    kill -l              List available signal names                  ║
 ║    help                 Display this help message                    ║
 ║                                                                      ║
 ║  Features:                                                           ║
@@ -500,6 +618,8 @@ BUILTINS = {
     "history": builtin_history,
     "source":  builtin_source,
     ".":       builtin_source,
+    "jobs":    builtin_jobs,
+    "kill":    builtin_kill,
 }
 
 

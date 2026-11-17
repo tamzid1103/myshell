@@ -54,6 +54,7 @@ from pipes import execute_pipeline
 from variables import expand_variables
 from globbing import expand_globs
 from redirects import parse_redirections
+import jobs as _jobs_registry
 
 
 def display_banner():
@@ -74,9 +75,9 @@ def display_banner():
 
 def get_prompt():
     """
-    Build the shell prompt string with ANSI colors.
+    Build the shell prompt string with ANSI colors and exit-code indicator.
     """
-    return format_prompt()
+    return format_prompt(last_exit_code=_last_exit_code)
 
 
 def dispatch_segment(segment, background=False, last_exit_code=0):
@@ -182,20 +183,28 @@ def dispatch_line(parsed, last_exit_code=0):
 def reap_background_processes():
     """
     Reap any terminated background child processes without blocking.
-    Demonstrates asynchronous process cleanup via os.waitpid(-1, os.WNOHANG).
+
+    Uses the jobs registry to:
+      1. Non-blockingly collect exit statuses via os.waitpid(-1, WNOHANG)
+      2. Remove completed jobs from the registry
+      3. Print a completion notification (like bash's [1]+ Done  sleep 5)
+
+    This demonstrates asynchronous process management — the REPL never pauses
+    waiting for background jobs; it only collects them opportunistically.
     """
-    while True:
-        try:
-            pid, _ = os.waitpid(-1, os.WNOHANG)
-            if pid <= 0:
-                break
-        except (ChildProcessError, OSError):
-            break
+    for pid, job, status in _jobs_registry.reap():
+        exit_code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else -1
+        done_msg = f"Done ({exit_code})" if exit_code != 0 else "Done"
+        from colors import yellow
+        print(yellow(f"\n[{job['jid']}]+  {done_msg:<14}  {job['cmd']}"))
 
 
 # Call stack for source execution to prevent infinite recursive loops
 _active_source_stack = []
 MAX_SOURCE_DEPTH = 16
+
+# Module-level exit code — updated after each command so get_prompt() can read it
+_last_exit_code = 0
 
 
 def run_script(filepath, echo=True):
@@ -307,6 +316,9 @@ def main():
 
         # ── DISPATCH: Route commands through conditional execution chain
         last_exit_code = dispatch_line(parsed, last_exit_code=last_exit_code)
+        # Expose exit code at module level so get_prompt() can read it
+        global _last_exit_code
+        _last_exit_code = last_exit_code
         colors.restore_terminal()
 
 

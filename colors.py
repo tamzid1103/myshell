@@ -205,7 +205,7 @@ def build_prompt(dir_name):
     return format_prompt()
 
 
-def format_prompt():
+def format_prompt(last_exit_code=0):
     """
     Construct a colorized shell prompt.
     Format: username@myshell:dirname$ 
@@ -225,11 +225,22 @@ def format_prompt():
         display_dir = "?"
 
     if not is_color_enabled():
-        return f"{user}@myshell:{display_dir}$ "
+        badge = f" [\u2717 {last_exit_code}]" if last_exit_code != 0 else ""
+        return f"{user}@myshell:{display_dir}{badge}$ "
 
     user_col = Colors.GREEN
     shell_col = COLOR_MAP.get(_active_prompt_color, Colors.CYAN)
     dir_col = Colors.BLUE
+
+    # Non-zero exit code → red failure badge between path and $
+    if last_exit_code != 0:
+        exit_badge = (
+            f" \001{Colors.BOLD}{Colors.RED}\002"
+            f"[\u2717 {last_exit_code}]"
+            f"\001{Colors.RESET}\002"
+        )
+    else:
+        exit_badge = ""
 
     # If active text color is selected, set it at the end of prompt
     text_code = f"\001{COLOR_MAP[_active_text_color]}\002" if _active_text_color in COLOR_MAP else ""
@@ -240,5 +251,5 @@ def format_prompt():
         f"\001{Colors.BOLD}{shell_col}\002myshell"
         f"\001{Colors.RESET}\002:"
         f"\001{Colors.BOLD}{dir_col}\002{display_dir}"
-        f"\001{Colors.RESET}\002$ {text_code}"
+        f"\001{Colors.RESET}\002{exit_badge}$ {text_code}"
     )
